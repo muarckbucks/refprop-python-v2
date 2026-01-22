@@ -16,7 +16,7 @@ class ClienteRefprop:
             raise RuntimeError("ClienteRefprop no inicializado")
         return ClienteRefprop._instancia
 
-    def rprop(self, fluids: str | list[str], salida: str | list[str], mixture: list[float] | None = None, **kwargs) -> list[float]:
+    def rprop(self, fluids: str | list[str], salida: str | list[str], mixture: list[float] | None = None, **kwargs: float) -> list[float]:
         """
         Documentació función rprop (15% más lenta que llamar al dll)
         
@@ -165,12 +165,39 @@ class TPoint:
         return self.cliente.rprop(self.fluid, nombre, self.mixture, **self.kwargs)[0]
     
     def __getattr__(self, nombre):
+        """
+        Si no se pide un atributo y no se ha calculado se intercepta para calcularlo
+        """
         if nombre in self._props:
             valor = self._compute(nombre)
             setattr(self, nombre, valor)
             return valor
         raise AttributeError(f"Atributo {nombre} no existe. Posibles atrubutos: {self._props}")
     
-    def calcular(self, entrada: str | list[str]) -> list[float]:
-        return self.cliente.rprop(self.fluid, entrada, self.mixture, **self.kwargs)
+    def calcular(self, salida: str | list[str]) -> None:
+        """
+        Calcular varios valores a la vez y guardarlos en el objeto para
+        que si se quieren varios valores no se pidan al dll de 1 en 1.
+        """
+        if isinstance(salida, list):
+            salida_lista = [x.upper() for x in salida]
+        elif isinstance(salida, str):
+            salida_lista: list[str] = re.findall(r"[^;]{1,}", salida.upper())        
+        else:
+            raise TypeError("Tipo incorrecto de salida, tiene que ser: str o list[str]")
     
+        resultado = self.cliente.rprop(self.fluid, salida_lista, self.mixture, **self.kwargs)
+
+        for nombre, valor in zip(salida_lista, resultado):
+            setattr(self, nombre, valor)
+    
+    def mostrar_atributos(self) -> None:
+        """
+        Muestra los atributos que estan calculados, puede resultar útil cuando no se sabe
+        si un atributo se ha calculado y agrupar el cálculo.
+        """
+        print(8*"#" + " Atributos " + 8*"#")
+        for nombre, valor in self.__dict__.items():     
+            print(f"{nombre}: {valor}")
+        
+        print(27*"#")
