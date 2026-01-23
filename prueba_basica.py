@@ -16,23 +16,23 @@ Ap_0 = 1
 SH = 5
 SUB = 1
 
-P0 = CR.rprop(fluido, "P", T = T_cw_out - Ap_0, Q = 0)[0]
-PK = CR.rprop(fluido, "P", T = T_hw_in + Ap_k, Q = 1)[0]
+P0 = rprop(fluido, "P", T = T_cw_out - Ap_0, Q = 0)[0]
+PK = rprop(fluido, "P", T = T_hw_in + Ap_k, Q = 1)[0]
 
 rend_iso_h = 1
 
 # Punto 1
-t_sat_1 = CR.rprop(fluido, "T", P = P0, Q = 1)[0]
+t_sat_1 = rprop(fluido, "T", P = P0, Q = 1)[0]
 P1 = TPoint(fluido, P = P0, T = t_sat_1 + SH)
 P1.calcular("H;S")
 
 # Punto 2
-h_2_s = CR.rprop(fluido, "H", P = PK, S = P1.S)[0]
+h_2_s = rprop(fluido, "H", P = PK, S = P1.S)[0]
 h_2 = P1.H + (h_2_s - P1.H)/rend_iso_h
 P2 = TPoint(fluido, P = PK, H = h_2)
 
 # Punto 3
-t_sat_3 = CR.rprop(fluido, "T", Q = 0, P = PK)[0]
+t_sat_3 = rprop(fluido, "T", Q = 0, P = PK)[0]
 P3 = TPoint(fluido, P = PK, T = t_sat_3 - SUB)
 
 # Punto 4
