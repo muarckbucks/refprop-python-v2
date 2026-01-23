@@ -164,6 +164,8 @@ class TPoint:
         self.fluid = fluid
         self.mezcla = mezcla
         self.kwargs = kwargs
+        for clave, valor in kwargs.items():
+            setattr(self, clave, valor)
 
         # Obtener el cliente
         self.cliente = ClienteRefprop.obtener_instancia()
