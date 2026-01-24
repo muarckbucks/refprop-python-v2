@@ -1,5 +1,5 @@
 from ctREFPROP.ctREFPROP import REFPROPFunctionLibrary
-import re
+import re, os, subprocess, json
 
 
 class ClienteRefprop:
@@ -209,3 +209,81 @@ class TPoint:
         for nombre, valor in self.__dict__.items():     
             print(f"{nombre}: {valor}")        
         print(27*"#"+"\n")
+
+def diagrama_PH(fluido: str | list[str], mezcla: list[float], P_min: float, P_max: float, H_min: float,
+                H_max: float, num_puntos_sat: int, num_puntos_temp: int, base_log: float, puntos: list[TPoint] | None = None) -> None:
+    
+    script_animacion = "refprop_graph.py"
+    comando = ["manim", "-pqk", script_animacion, "PHDiagram"]
+
+    datos = {
+        "fluido": fluido,
+        "mezcla": mezcla,
+        "puntos": puntos,
+        "P_min": P_min,
+        "P_max": P_max,
+        "H_min": H_min,
+        "H_max": H_max,
+        "num_puntos_sat": num_puntos_sat,
+        "num_puntos_temp": num_puntos_temp,
+        "base_log": base_log
+    }
+
+    env_vars = {
+        **os.environ,
+        "DATOS": json.dumps(datos)
+    }
+
+    try:
+        subprocess.run(comando, check = True, env = env_vars)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}")
+
+def TPoint_a_lista(puntos: list[TPoint]) -> list[list[float]]:
+    lista: list[dict[str, float]] = []
+    [lista.append([punto.H, punto.P]) for punto in puntos]
+    return lista
+
+def puntos_PH(puntos: list[TPoint], base_log: float, margen: float | None = 0.2) -> None:
+    punto1 = puntos[0]
+    fluido = punto1.fluid
+    mezcla = punto1.mezcla
+    [H_min_punto, H_max_punto, P_min_punto, P_max_punto] = [punto1.H, punto1.H, punto1.P, punto1.P]
+
+    for punto in puntos[1:]:
+        if punto.H > H_max_punto:
+            H_max_punto = punto.H
+        elif punto.H < H_min_punto:
+            H_min_punto = punto.H
+        if punto.P > P_max_punto:
+            P_max_punto = punto.P
+        elif punto.P < P_min_punto:
+            P_min_punto = punto.P
+
+    H_max = H_max_punto + (H_max_punto - H_min_punto) * margen
+    H_min = H_min_punto - (H_max_punto - H_min_punto) * margen
+    ratio = P_max_punto / P_min_punto
+    factor = ratio ** margen
+    P_max = P_max_punto * factor
+    P_min = P_min_punto / factor
+
+    num_puntos_sat = 500
+    num_puntos_temp = 500
+
+    diagrama_PH(fluido, mezcla, P_min, P_max, H_min, H_max, num_puntos_sat, num_puntos_temp, base_log, TPoint_a_lista(puntos))
+
+def main():
+
+    fluid = "PROPANE"
+    mezcla = [1.0]
+    P1 = TPoint(fluid, mezcla, P = 2, H = 600)
+    P2 = TPoint(fluid, mezcla, P = 15, H = 700)
+    P3 = TPoint(fluid, mezcla, P = 15, H = 300)
+    P4 = TPoint(fluid, mezcla, P = 2, H = 300)
+    puntos = [P1, P2, P3, P4]
+
+    puntos_PH(puntos, base_log = 1.5, margen = 0.2)
+
+if __name__ == "__main__":
+    main()
+
