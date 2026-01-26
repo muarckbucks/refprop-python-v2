@@ -175,23 +175,29 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
         P_low = P_min
         P_high = P_max
         P_mid = None
-        eps_P = 1e-2
+        eps_P = 0.01
 
         for _ in range(100):
             P_mid = 0.5 * (P_low + P_high)
             out = cliente.RP.REFPROPdll(fluidos_refprop, "PQ", "P;T", cliente.RP.SI_WITH_C,
-                                        1, 0, P_mid, 0, mezcla)
+                                        1, 0, P_mid, 0.5, mezcla)
+            
+
             if out.ierr != 0:
                 P_high = P_mid
                 continue
             
-            delta_P = P_high - P_low
+            delta_P = abs(P_high - P_low)
             if delta_P > eps_P:
                 P_low = P_mid
             else:
+                P_crit = P_low
+                T_crit = cliente.RP.REFPROPdll(fluidos_refprop, "PQ", "T", cliente.RP.SI_WITH_C,
+                                                 1, 0, P_low, 0.5, mezcla).Output[0]
                 break
+        else:
+            raise RuntimeError("Las propiedades críticas no convergen")
 
-        [P_crit, T_crit] = out.Output[0:2]
         
 
     if calcular_Pcrit:

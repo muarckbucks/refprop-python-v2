@@ -6,7 +6,7 @@ Cliente = ClienteRefprop(r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL")
 def main():
     # DATOS BÁSICOS
     fluido = "PROPANE;CO2"
-    mezcla = [0.55, 0.45]
+    mezcla = [0.5, 0.5]
 
     t_hw_in = 47
     t_hw_out = 55
@@ -19,12 +19,12 @@ def main():
         "t_cw": [t_cw_in, t_cw_out]
     }
 
-    resultado = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
     try:
-        resultado = calcular_ciclo_basico() #BUG temperatura crítica demasiado baja
+        resultado = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
         print(resultado["string resultado"])
-    except ErrorTemperaturaTranscritica as e:
-        print(e) # Está mal
+        puntos_PH(resultado["puntos"], 1.5, 0.2)
+    except ErrorTemperaturaTranscritica:
+        ...
 
 
 

@@ -63,7 +63,7 @@ def log_trans_list(Presion: list[float], config_log: list[float]) -> list[float]
     [factor_r, base_log, coef_log] = config_log
 
     if base_log != 1:
-        P_log = [float(factor_r * np.log(p * coef_log)/np.log(base_log)) for p in Presion]
+        P_log = [float(factor_r * np.log(abs(p * coef_log))/np.log(base_log)) for p in Presion] #Abs para que si hay valor negativo no falle
     else:
         P_log = [factor_r * p for p in Presion]
 
@@ -72,7 +72,7 @@ def log_trans_float(Presion: float, config_log: list[float]) -> float:
     [factor_r, base_log, coef_log] = config_log
     
     if base_log != 1:
-        P_log = float(factor_r * np.log(Presion * coef_log)/np.log(base_log))
+        P_log = float(factor_r * np.log(abs(Presion * coef_log))/np.log(base_log)) #Abs para que si hay valor negativo no falle
     else:
         P_log = factor_r * Presion
 
