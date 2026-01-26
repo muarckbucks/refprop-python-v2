@@ -1,4 +1,4 @@
-from refprop_funcs import * 
+from refprop_utils import * 
 from typing import Any
 
 Cliente = ClienteRefprop(r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL")
@@ -21,7 +21,7 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
 
 
     if t3 > T_crit:
-        raise ValueError("Temperatura transcrítica")
+        raise ErrorTemperaturaTranscritica(f"Temperatura transcrítica en el punto de descarga: {t3:.1f}ºC > {T_crit:.1f}ºC")
     else:
         PK = rprop(fluido, "P", mezcla, T = t3 + SUB, Q = 0)[0]
 
@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     # Datos iniciales
     fluido = "PROPANE;CO2"
-    mezcla = [0.8, 0.2]
+    mezcla = [0.4, 0.6]
 
     t_hw_in = 47.
     t_hw_out = 55.

@@ -1,6 +1,9 @@
 from ctREFPROP.ctREFPROP import REFPROPFunctionLibrary
 import re, os, subprocess, json
 
+# ERRORES
+class ErrorTemperaturaTranscritica(Exception):
+    ...
 
 class ClienteRefprop:
     _instancia = None
@@ -166,7 +169,7 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
 
     # Calcualr la temperatura y presión crítica aproximada
     if calcular_Pcrit or calcular_Tcrit:
-        P_min = 0.01 # MPa
+        P_min = 0.5 # MPa
         P_max = 100 # MPa
 
         P_low = P_min
