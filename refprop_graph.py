@@ -111,11 +111,11 @@ def parametros_basicos(fluido: str | list[str], mezcla: list[float], config_log:
 
     # Propiedades críticas
     [T_crit, P_crit] = rprop(fluido, "Tcrit;Pcrit", mezcla, P = 0, H = 0)
-    H_crit = rprop(fluido, "H", P = P_crit, T = T_crit)[0]
+    H_crit = rprop(fluido, "H", mezcla, P = P_crit, T = T_crit)[0]
 
     #Temperaturas mínimas y máximas
     T_min = min(rprop(fluido, "T", mezcla, P = P_min, H = H_min)[0], rprop(fluido, "T", mezcla, P = P_max, H = H_min)[0])
-    T_max = rprop(fluido, "T", P = P_max, H = H_max)[0]
+    T_max = rprop(fluido, "T", mezcla, P = P_max, H = H_max)[0]
     return [P_max_trans, P_min_trans, T_crit, P_crit, H_crit, T_min, T_max]
 
 # CURVAS DE TEMPERATURA CONSTANTE

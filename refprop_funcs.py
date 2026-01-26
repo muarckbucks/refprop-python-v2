@@ -16,12 +16,12 @@ class ClienteRefprop:
             raise RuntimeError("ClienteRefprop no inicializado")
         return ClienteRefprop._instancia
 
-def rprop(fluids: str | list[str], salida: str | list[str], mezcla: list[float] | None = None, **kwargs: float) -> list[float]:
+def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float] | None = None, **kwargs: float) -> list[float]:
     """
     Función para obtener las propiedades termodinámicas de un fludio a partir de 2 inputs (15% más lento que el DLL)
     
-    :param fluids: En está variable se declararán los fluidos que se quieran estudiar, tanto separados con ";" o en una lista.
-    :type fluids: str | list[str]
+    :param fluidos: En está variable se declararán los fluidos que se quieran estudiar, tanto separados con ";" o en una lista.
+    :type fluidos: str | list[str]
     :param salida: En esta varibale se pondrán todas las magnitudes que se quieran del fluido con una string separada por ";"
         o por una lista con las diferentes magnitudes.
     :type salida: str | list[str]
@@ -82,16 +82,21 @@ def rprop(fluids: str | list[str], salida: str | list[str], mezcla: list[float] 
             valores_entrada_refprop[index] /= 10
 
     # Convertir fluidos list[str] -> str con fluid1;fluid2
-    fluids_refprop = ""
-    if isinstance(fluids, list):
-        if len(fluids) == 1:
-            fluids_refprop += fluids[0]
+    fluidos_refprop = ""
+    if isinstance(fluidos, list):
+        n_fluidos = len(fluidos)
+        if len(fluidos) == 1:
+            fluidos_refprop += fluidos[0]
+            fluidos_lista = fluidos
         
         else:
-            fluids_refprop = ";".join(fluids)
+            fluidos_refprop = ";".join(fluidos)
     
-    elif isinstance(fluids, str):
-        fluids_refprop = fluids
+    elif isinstance(fluidos, str):
+        fluidos_refprop = fluidos
+        fluidos_lista = re.findall(r"[;^][^;]+[$;]", fluidos)
+        n_fluidos = fluidos_refprop.count(";") + 1
+    
     
     else:
         raise TypeError("Tipo incorrecto de fluido, tiene que ser: str o list[str]")
@@ -116,15 +121,38 @@ def rprop(fluids: str | list[str], salida: str | list[str], mezcla: list[float] 
     calcular_Q: bool = "Q" in salida_lista
     if calcular_Q:
         indice_Q = salida_lista.index("Q")
-        salida_lista.remove("Q")
 
+
+    # Ver si Tcrit / Pcrit está en la lista ya que si hay más de
+    # 2 fluidos y se piden, refprop no dará una solución correcta
+
+    if "TCRIT" in salida_lista and n_fluidos > 1:
+        calcular_Tcrit = True
+        indice_Tcrit = salida_lista.index("TCRIT")
+    else:
+        calcular_Tcrit = False
+
+    if "PCRIT" in salida_lista and n_fluidos > 1:
+        calcular_Pcrit = True
+        indice_Pcrit = salida_lista.index("PCRIT")
+    else:
+        calcular_Pcrit = False
+
+    if calcular_Q:
+        salida_lista.remove("Q")
+    if calcular_Pcrit:
+        salida_lista.remove("PCRIT")
+    if calcular_Tcrit:
+        salida_lista.remove("TCRIT")
+
+    # Pasar la salida de list[str] -> str
     if len(salida_lista) != 0:
         salida_refprop = ";".join(salida_lista)
     else:
         salida_refprop = "H"
 
     # Llamar a REFPROP
-    res = cliente.RP.REFPROPdll(fluids_refprop, magnitud_entrada_refprop, salida_refprop, cliente.RP.SI_WITH_C, 1, 0,
+    res = cliente.RP.REFPROPdll(fluidos_refprop, magnitud_entrada_refprop, salida_refprop, cliente.RP.SI_WITH_C, 1, 0,
                                 valores_entrada_refprop[0], valores_entrada_refprop[1], mezcla)
     
     resultados: list[float] = []
@@ -135,6 +163,38 @@ def rprop(fluids: str | list[str], salida: str | list[str], mezcla: list[float] 
     # Calcular la calidad de vapor si se ha pedido
     if calcular_Q:
         resultados.insert(indice_Q, res.q)
+
+    # Calcualr la temperatura y presión crítica aproximada
+    if calcular_Pcrit or calcular_Tcrit:
+        P_min = 0.01 # MPa
+        P_max = 100 # MPa
+
+        P_low = P_min
+        P_high = P_max
+        P_mid = None
+        eps_P = 1e-2
+
+        for _ in range(100):
+            P_mid = 0.5 * (P_low + P_high)
+            out = cliente.RP.REFPROPdll(fluidos_refprop, "PQ", "P;T", cliente.RP.SI_WITH_C,
+                                        1, 0, P_mid, 0, mezcla)
+            if out.ierr != 0:
+                P_high = P_mid
+                continue
+            
+            delta_P = P_high - P_low
+            if delta_P > eps_P:
+                P_low = P_mid
+            else:
+                break
+
+        [P_crit, T_crit] = out.Output[0:2]
+        
+
+    if calcular_Pcrit:
+        resultados.insert(indice_Pcrit, P_crit)
+    if calcular_Tcrit:
+        resultados.insert(indice_Tcrit, T_crit)
 
     # Pasar de MPa a bar la salida
     for index in indices_presion:

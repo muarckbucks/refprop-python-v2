@@ -110,24 +110,26 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
 
         return resultado
 
-# Datos iniciales
-fluido = "PROPANE"
-mezcla = [1.0]
-
-t_hw_in = 47.
-t_hw_out = 55.
-
-t_cw_in = 0.
-t_cw_out = -3.
-
-temperaturas_agua = {
-    "t_hw": [t_hw_in, t_hw_out],
-    "t_cw": [t_cw_in, t_cw_out]
-}
-
-resultado = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
 
 if __name__ == "__main__":
+
+    # Datos iniciales
+    fluido = "PROPANE;CO2"
+    mezcla = [0.8, 0.2]
+
+    t_hw_in = 47.
+    t_hw_out = 55.
+
+    t_cw_in = 0.
+    t_cw_out = -3.
+
+    temperaturas_agua = {
+        "t_hw": [t_hw_in, t_hw_out],
+        "t_cw": [t_cw_in, t_cw_out]
+    }
+
+    resultado = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
+    
     print(resultado["string resultado"])
     puntos_PH(resultado["puntos"], base_log = 1.5, margen = 0.2)
 
