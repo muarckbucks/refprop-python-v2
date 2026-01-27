@@ -283,7 +283,12 @@ def diagrama_PH(fluido: str | list[str], mezcla: list[float], P_min: float, P_ma
         comando_calidad = "-pqk"
 
     # Añadir un título personalizado a la imagen en función del fluido
-    fluido_lista = fluido.split(";")
+    if isinstance(fluido, str):
+        fluido_lista = fluido.split(";")
+    elif isinstance(fluido, list):
+        fluido_lista = fluido
+    else:
+        raise TypeError(f"La variable fluido debe ser de tipo: str | list[str], no de tipo {type(fluido)}")
 
     titulo_foto = ""
     for fluid, proporcion in zip(fluido_lista, mezcla):
