@@ -27,10 +27,12 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
 
         # Punto 3
         P3 = TPoint(fluido, mezcla, T = t3, P = PK)
+        P3.calcular("H", "D")
 
 
         # Punto 4
         P4 = TPoint(fluido, mezcla, H = P3.H, T = t_cw_out - ap_0)
+        P4.calcular("P", "H", "T")
         P0 = P4.P
 
         # Rendimiento isentrópico
@@ -39,11 +41,15 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
         # Punto 1
         t_sat_1 = rprop(fluido, "T", mezcla, P = P0, Q = 1)
         P1 = TPoint(fluido, mezcla, T = t_sat_1 + SH, P = P0)
+        P1.calcular("H", "S", "V")
 
         # Punto 2
         h_2_s = rprop(fluido, "H", mezcla, P = PK, S = P1.S)
         h_2 = P1.H + (h_2_s - P1.H)/rend_iso_h
         P2 = TPoint(fluido, mezcla, P = PK, H = h_2)
+        P2.calcular("H", "Q", "D")
+        if P2.Q <= 1:
+            raise ErrorPuntoBifasico("El punto de descarga cae en la zona bifásica")
 
         # COP y VCC
         COP = (P2.H - P3.H)/(P2.H - P1.H)
@@ -58,8 +64,8 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
 
         puntos_saturados = [Pk_liq_sat, Pk_vap_sat, P0_liq_sat, P0_vap_sat]
         # Caudales
-        P_hw_in = TPoint("ETHYLENEGLYCOL", P = 1, T = t_hw_in)
-        P_hw_out = TPoint("ETHYLENEGLYCOL", P = 1, T = t_hw_out)
+        P_hw_in = TPoint("WATER", P = 1, T = t_hw_in)
+        P_hw_out = TPoint("WATER", P = 1, T = t_hw_out)
         P_cw_in = TPoint("ETHYLENEGLYCOL", P = 1, T = t_cw_in)
         P_cw_out = TPoint("ETHYLENEGLYCOL", P = 1, T = t_cw_out)
 
@@ -73,7 +79,7 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
 
         # Pinch
         h_water_pinch = P_hw_out.H - 1/ratio_m_GlycolHot_R * (P2.H - Pk_vap_sat.H)
-        P_water_pinch = TPoint("ETHYLENEGLYCOL", P = 1, H = h_water_pinch)
+        P_water_pinch = TPoint("WATER", P = 1, H = h_water_pinch)
         pinch = Pk_vap_sat.T - P_water_pinch.T
 
         # Glide
@@ -96,6 +102,8 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
         
 
         resultado = {
+            "fluido": fluido,
+            "mezcla": mezcla,
             "COP": COP,
             "VCC": VCC,
             "puntos": puntos,
@@ -106,6 +114,7 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
             "pinch": pinch,
             "glide": [glide_k, glide_0],
             "string resultado": string_resultado,
+            "error": None
         }
 
         return resultado
