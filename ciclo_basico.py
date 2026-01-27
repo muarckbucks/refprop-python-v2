@@ -17,13 +17,13 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
     SUB = 1
 
     t3 = t_hw_in + ap_k
-    T_crit = rprop(fluido, "Tcrit", mezcla, T = 0, H = 0)[0]
+    T_crit = rprop(fluido, "Tcrit", mezcla, T = 0, H = 0)
 
 
     if t3 > T_crit:
         raise ErrorTemperaturaTranscritica(f"Temperatura transcrítica en el punto de descarga: {t3:.1f}ºC > {T_crit:.1f}ºC")
     else:
-        PK = rprop(fluido, "P", mezcla, T = t3 + SUB, Q = 0)[0]
+        PK = rprop(fluido, "P", mezcla, T = t3 + SUB, Q = 0)
 
         # Punto 3
         P3 = TPoint(fluido, mezcla, T = t3, P = PK)
@@ -37,11 +37,11 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
         rend_iso_h = 1
 
         # Punto 1
-        t_sat_1 = rprop(fluido, "T", mezcla, P = P0, Q = 1)[0]
+        t_sat_1 = rprop(fluido, "T", mezcla, P = P0, Q = 1)
         P1 = TPoint(fluido, mezcla, T = t_sat_1 + SH, P = P0)
 
         # Punto 2
-        h_2_s = rprop(fluido, "H", mezcla, P = PK, S = P1.S)[0]
+        h_2_s = rprop(fluido, "H", mezcla, P = PK, S = P1.S)
         h_2 = P1.H + (h_2_s - P1.H)/rend_iso_h
         P2 = TPoint(fluido, mezcla, P = PK, H = h_2)
 
@@ -111,26 +111,5 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
         return resultado
 
 
-if __name__ == "__main__":
-
-    # Datos iniciales
-    fluido = "PROPANE;CO2"
-    mezcla = [0.4, 0.6]
-
-    t_hw_in = 47.
-    t_hw_out = 55.
-
-    t_cw_in = 0.
-    t_cw_out = -3.
-
-    temperaturas_agua = {
-        "t_hw": [t_hw_in, t_hw_out],
-        "t_cw": [t_cw_in, t_cw_out]
-    }
-
-    resultado = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
-    
-    print(resultado["string resultado"])
-    puntos_PH(resultado["puntos"], base_log = 1.5, margen = 0.2)
 
 

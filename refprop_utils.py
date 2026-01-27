@@ -19,13 +19,13 @@ class ClienteRefprop:
             raise RuntimeError("ClienteRefprop no inicializado")
         return ClienteRefprop._instancia
 
-def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float] | None = None, **kwargs: float) -> list[float]:
+def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float] | None = None, **kwargs: float) -> float | list[float]:
     """
-    Función para obtener las propiedades termodinámicas de un fludio a partir de 2 inputs (15% más lento que el DLL)
+    Función para obtener las propiedades termodinámicas de un fluido a partir de 2 inputs (15% más lento que el DLL)
     
-    :param fluidos: En está variable se declararán los fluidos que se quieran estudiar, tanto separados con ";" o en una lista.
+    :param fluidos: En esta variable se declararán los fluidos que se quieran estudiar, tanto separados con ";" o en una lista.
     :type fluidos: str | list[str]
-    :param salida: En esta varibale se pondrán todas las magnitudes que se quieran del fluido con una string separada por ";"
+    :param salida: En esta variable se pondrán todas las magnitudes que se quieran del fluido con una string separada por ";"
         o por una lista con las diferentes magnitudes.
     :type salida: str | list[str]
     :param mezcla: Esta variable será una lista con las proporciones de los diferentes fluidos, tiene como valor
@@ -52,17 +52,18 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
 
     Ejemplos de uso:
     
-    rprop(["CO2", "R290"], "T;H", [0.55, 0.45], P = 5, H = 300)
+    rprop(["CO2", "R290"], "T;H", [0.55, 0.45], P = 5, H = 300)  # Returns [T, H]
 
-    rprop("CO2;R290", ["T", "H"], [0.3, 0.7], P = 5, H = 300)
+    rprop("CO2;R290", ["T", "H"], [0.3, 0.7], P = 5, H = 300)  # Returns [T, H]
 
+    rprop("CO2", "T", [1.0], P = 5, H = 300)  # Returns T (float for single output)
     """
 
     # Obtener el cliente
     cliente = ClienteRefprop.obtener_instancia()
 
     # Valor predeterminado de mezcla
-    if mezcla == None:
+    if mezcla is None:
         mezcla = [1.0]
     # Comprobar que solo hay dos entradas en kwargs
     if len(kwargs.keys()) != 2:
@@ -79,28 +80,23 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
         magnitud_entrada_refprop += clave
         valores_entrada_refprop.append(valor)
     
-    # Pasar de MPa a bar en la entrada
+    # Pasar de bar a MPa en la entrada para presión
     for index, key in enumerate(kwargs.keys()):
-        if key == "P":
+        if key.upper() == "P":
             valores_entrada_refprop[index] /= 10
 
     # Convertir fluidos list[str] -> str con fluid1;fluid2
-    fluidos_refprop = ""
     if isinstance(fluidos, list):
+        fluidos_lista = fluidos
         n_fluidos = len(fluidos)
         if len(fluidos) == 1:
-            fluidos_refprop += fluidos[0]
-            fluidos_lista = fluidos
-        
+            fluidos_refprop = fluidos[0]
         else:
             fluidos_refprop = ";".join(fluidos)
-    
     elif isinstance(fluidos, str):
+        fluidos_lista = fluidos.split(";")
+        n_fluidos = len(fluidos_lista)
         fluidos_refprop = fluidos
-        fluidos_lista = re.findall(r"[;^][^;]+[$;]", fluidos)
-        n_fluidos = fluidos_refprop.count(";") + 1
-    
-    
     else:
         raise TypeError("Tipo incorrecto de fluido, tiene que ser: str o list[str]")
 
@@ -119,16 +115,13 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
         if texto in texto_presion:
             indices_presion.append(index)
 
-
     # Ver si título de vapor está en la lista
     calcular_Q: bool = "Q" in salida_lista
     if calcular_Q:
         indice_Q = salida_lista.index("Q")
 
-
     # Ver si Tcrit / Pcrit está en la lista ya que si hay más de
     # 2 fluidos y se piden, refprop no dará una solución correcta
-
     if "TCRIT" in salida_lista and n_fluidos > 1:
         calcular_Tcrit = True
         indice_Tcrit = salida_lista.index("TCRIT")
@@ -155,6 +148,8 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
         salida_refprop = "H"
 
     # Llamar a REFPROP
+    ncomp = len(fluidos_lista)
+    cliente.RP.SETUPdll(ncomp, fluidos_refprop, '', 'DEF')
     res = cliente.RP.REFPROPdll(fluidos_refprop, magnitud_entrada_refprop, salida_refprop, cliente.RP.SI_WITH_C, 1, 0,
                                 valores_entrada_refprop[0], valores_entrada_refprop[1], mezcla)
     
@@ -162,19 +157,17 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
     for i in range(len(salida_lista)):
         resultados.append(res.Output[i])
 
-
     # Calcular la calidad de vapor si se ha pedido
     if calcular_Q:
         resultados.insert(indice_Q, res.q)
 
-    # Calcualr la temperatura y presión crítica aproximada
+    # Calcular la temperatura y presión crítica aproximada
     if calcular_Pcrit or calcular_Tcrit:
-        P_min = 0.5 # MPa
-        P_max = 100 # MPa
+        P_min = 0.5  # MPa
+        P_max = 100  # MPa
 
         P_low = P_min
         P_high = P_max
-        P_mid = None
         eps_P = 0.01
 
         for _ in range(100):
@@ -182,7 +175,6 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
             out = cliente.RP.REFPROPdll(fluidos_refprop, "PQ", "P;T", cliente.RP.SI_WITH_C,
                                         1, 0, P_mid, 0.5, mezcla)
             
-
             if out.ierr != 0:
                 P_high = P_mid
                 continue
@@ -198,8 +190,6 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
         else:
             raise RuntimeError("Las propiedades críticas no convergen")
 
-        
-
     if calcular_Pcrit:
         resultados.insert(indice_Pcrit, P_crit)
     if calcular_Tcrit:
@@ -209,7 +199,9 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
     for index in indices_presion:
         resultados[index] *= 10
 
-    return resultados
+    # Return single value if only one output, else list
+    return resultados[0] if len(resultados) == 1 else resultados
+
 
 class TPoint:
     """
@@ -240,7 +232,7 @@ class TPoint:
         self.cliente = ClienteRefprop.obtener_instancia()
     
     def _compute(self, nombre):
-        return rprop(self.fluid, nombre, self.mezcla, **self.kwargs)[0]
+        return rprop(self.fluid, nombre, self.mezcla, **self.kwargs)
     
     def __getattr__(self, nombre):
         """
@@ -280,10 +272,27 @@ class TPoint:
         print(27*"#"+"\n")
 
 def diagrama_PH(fluido: str | list[str], mezcla: list[float], P_min: float, P_max: float, H_min: float,
-                H_max: float, num_puntos_sat: int, num_puntos_temp: int, base_log: float, puntos: list[TPoint] | None = None) -> None:
+                H_max: float, num_puntos_sat: int, num_puntos_temp: int, base_log: float,
+                play: bool | None = None, puntos: list[TPoint] | None = None) -> None:
     
-    script_animacion = "refprop_graph.py"
-    comando = ["manim", "-pqk", script_animacion, "PHDiagram"]
+    # Nombre del script donde se genera la imagen
+    script_imagen = "refprop_graph.py"
+
+    # Si se abre o no al acabar de generar la imagen
+    if not play:
+        comando_calidad = "-qk"
+    else:
+        comando_calidad = "-pqk"
+
+    # Añadir un título personalizado a la imagen en función del fluido
+    fluido_lista = fluido.split(";")
+
+    titulo_foto = ""
+    for fluid, proporcion in zip(fluido_lista, mezcla):
+        titulo_foto += fluid + f"_{(proporcion*100):.0f}%"
+
+
+    comando = ["manim", comando_calidad, script_imagen, "PHDiagram", "-o", titulo_foto]
 
     datos = {
         "fluido": fluido,
@@ -313,7 +322,7 @@ def TPoint_a_lista(puntos: list[TPoint]) -> list[list[float]]:
     [lista.append([punto.H, punto.P]) for punto in puntos]
     return lista
 
-def puntos_PH(puntos: list[TPoint], base_log: float, margen: float | None = 0.2) -> None:
+def puntos_PH(puntos: list[TPoint], base_log: float, margen: float | None = 0.2, play: bool | None = None) -> None:
     punto1 = puntos[0]
     fluido = punto1.fluid
     mezcla = punto1.mezcla
@@ -336,10 +345,10 @@ def puntos_PH(puntos: list[TPoint], base_log: float, margen: float | None = 0.2)
     P_max = P_max_punto * factor
     P_min = P_min_punto / factor
 
-    num_puntos_sat = 500
-    num_puntos_temp = 500
+    num_puntos_sat = 200
+    num_puntos_temp = 200
 
-    diagrama_PH(fluido, mezcla, P_min, P_max, H_min, H_max, num_puntos_sat, num_puntos_temp, base_log, TPoint_a_lista(puntos))
+    diagrama_PH(fluido, mezcla, P_min, P_max, H_min, H_max, num_puntos_sat, num_puntos_temp, base_log, play, TPoint_a_lista(puntos))
 
 def main():
 

@@ -1,5 +1,6 @@
 from refprop_utils import *
 from ciclo_basico import *
+import numpy as np
 
 Cliente = ClienteRefprop(r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL")
 
@@ -19,14 +20,25 @@ def main():
         "t_cw": [t_cw_in, t_cw_out]
     }
 
+
+
     try:
         resultado = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
         print(resultado["string resultado"])
         puntos_PH(resultado["puntos"], 1.5, 0.2)
     except ErrorTemperaturaTranscritica:
-        ...
+        resultado = None
+    except RuntimeError:
+        resultado = None
+    if resultado is not None:
+        print(resultado["string resultado"])
+    else:
+        print(resultado)
+        
+
 
 
 
 if __name__ == "__main__":
     main()
+    

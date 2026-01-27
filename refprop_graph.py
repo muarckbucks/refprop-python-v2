@@ -111,11 +111,11 @@ def parametros_basicos(fluido: str | list[str], mezcla: list[float], config_log:
 
     # Propiedades críticas
     [T_crit, P_crit] = rprop(fluido, "Tcrit;Pcrit", mezcla, P = 0, H = 0)
-    H_crit = rprop(fluido, "H", mezcla, P = P_crit, T = T_crit)[0]
+    H_crit = rprop(fluido, "H", mezcla, P = P_crit, T = T_crit)
 
     #Temperaturas mínimas y máximas
-    T_min = min(rprop(fluido, "T", mezcla, P = P_min, H = H_min)[0], rprop(fluido, "T", mezcla, P = P_max, H = H_min)[0])
-    T_max = rprop(fluido, "T", mezcla, P = P_max, H = H_max)[0]
+    T_min = min(rprop(fluido, "T", mezcla, P = P_min, H = H_min), rprop(fluido, "T", mezcla, P = P_max, H = H_min))
+    T_max = rprop(fluido, "T", mezcla, P = P_max, H = H_max)
     return [P_max_trans, P_min_trans, T_crit, P_crit, H_crit, T_min, T_max]
 
 # CURVAS DE TEMPERATURA CONSTANTE
@@ -140,13 +140,13 @@ def generar_curvas_temperatura(fluido: str | list[str], mezcla: list[float], T_m
             curvas_temperatura_liq[temperatura] = [[],[]] # Primero H (x) y luego P (y)
             [presiones, presiones_trans] = log_space(P_max, Punto_liq_sat.P*1.001, num_puntos_temp, config_log)
             curvas_temperatura_liq[temperatura][1] = presiones_trans
-            curvas_temperatura_liq[temperatura][0] = [rprop(fluido, "H", mezcla, P = presion, T = temperatura)[0] for presion in presiones]
+            curvas_temperatura_liq[temperatura][0] = [rprop(fluido, "H", mezcla, P = presion, T = temperatura) for presion in presiones]
 
             # Parte bifásica
             curvas_temperatura_bif[temperatura] = [[],[]]
             entalpias = [float(x) for x in np.linspace(Punto_liq_sat.H, Punto_vap_sat.H, num = num_puntos_temp)]
             curvas_temperatura_bif[temperatura][0] = entalpias
-            presiones = [rprop(fluido, "P", mezcla, H = entalpia, T = temperatura)[0] for entalpia in entalpias]
+            presiones = [rprop(fluido, "P", mezcla, H = entalpia, T = temperatura) for entalpia in entalpias]
             presiones_trans: list[float] = log_trans_list(presiones, config_log)
             curvas_temperatura_bif[temperatura][1] = presiones_trans
             
@@ -154,14 +154,14 @@ def generar_curvas_temperatura(fluido: str | list[str], mezcla: list[float], T_m
             curvas_temperatura_vap[temperatura] = [[],[]]
             [presiones, presiones_trans] = log_space(Punto_vap_sat.P*0.999, P_min, num_puntos_temp, config_log)
             curvas_temperatura_vap[temperatura][1] = presiones_trans
-            curvas_temperatura_vap[temperatura][0] = [rprop(fluido, "H", mezcla, P = presion, T = temperatura)[0] for presion in presiones]
+            curvas_temperatura_vap[temperatura][0] = [rprop(fluido, "H", mezcla, P = presion, T = temperatura) for presion in presiones]
         
         # Si el punto pasa por encima de la campana:
         else:
             curvas_temperatura_tcrit[temperatura] = [[],[]]
             [presiones, presiones_trans] = log_space(P_min, P_max, num_puntos_temp, config_log)
             curvas_temperatura_tcrit[temperatura][1] = presiones_trans
-            curvas_temperatura_tcrit[temperatura][0] = [rprop(fluido, "H", mezcla, P = presion, T = temperatura)[0] for presion in presiones]
+            curvas_temperatura_tcrit[temperatura][0] = [rprop(fluido, "H", mezcla, P = presion, T = temperatura) for presion in presiones]
     
     return [curvas_temperatura_liq, curvas_temperatura_bif, curvas_temperatura_vap, curvas_temperatura_tcrit]
 
@@ -176,8 +176,8 @@ def generar_curvas_saturadas(fluido: str | list[str], mezcla: list[float], confi
     H_liq_sat: list[float] = []
     H_vap_sat: list[float] = []
     for p in P_sat:
-        H_liq_sat.append(rprop(fluido, "H", mezcla, Q = 0, P = p)[0])
-        H_vap_sat.append(rprop(fluido, "H", mezcla, Q = 1, P = p)[0])
+        H_liq_sat.append(rprop(fluido, "H", mezcla, Q = 0, P = p))
+        H_vap_sat.append(rprop(fluido, "H", mezcla, Q = 1, P = p))
     
     return [[H_liq_sat, P_sat_trans], [H_vap_sat, P_sat_trans]]
 
