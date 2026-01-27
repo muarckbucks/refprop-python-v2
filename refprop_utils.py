@@ -5,6 +5,9 @@ import re, os, subprocess, json
 class ErrorTemperaturaTranscritica(Exception):
     ...
 
+class ErrorPuntoBifasico(Exception):
+    ...
+
 class ClienteRefprop:
     _instancia = None
 
@@ -202,7 +205,6 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
     # Return single value if only one output, else list
     return resultados[0] if len(resultados) == 1 else resultados
 
-
 class TPoint:
     """
     Clase que guarda un punto termodinámico y calcula sus propiedades a demanda (20% más lento que el DLL)
@@ -244,21 +246,17 @@ class TPoint:
             return valor
         raise AttributeError(f"Atributo {nombre} no existe. Posibles atrubutos: {self._props}")
     
-    def calcular(self, salida: str | list[str]) -> None:
+    def calcular(self, *args) -> None:
         """
         Calcular varios valores a la vez y guardarlos en el objeto para
         que si se quieren varios valores no se pidan al dll de 1 en 1.
         """
-        if isinstance(salida, list):
-            salida_lista = [x.upper() for x in salida]
-        elif isinstance(salida, str):
-            salida_lista: list[str] = re.findall(r"[^;]{1,}", salida.upper())        
-        else:
-            raise TypeError("Tipo incorrecto de salida, tiene que ser: str o list[str]")
-    
+        salida_lista = []
+        for arg in args:
+            salida_lista.append(arg)
         resultado = rprop(self.fluid, salida_lista, self.mezcla, **self.kwargs)
 
-        for nombre, valor in zip(salida_lista, resultado):
+        for nombre, valor in zip(args, resultado):
             setattr(self, nombre, valor)
     
     def mostrar_atributos(self) -> None:
