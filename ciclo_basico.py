@@ -6,6 +6,10 @@ Cliente = ClienteRefprop(r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL")
 def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
                    temperaturas_agua: dict[str, list[float]]) -> dict[str, Any]:
     
+    resultado: dict[str, Any] = {}
+
+    resultado["fluido"] = fluido
+    resultado["mezcla"] = mezcla
 
     [t_hw_in, t_hw_out] = temperaturas_agua["t_hw"]
     [t_cw_in, t_cw_out] = temperaturas_agua["t_cw"]
@@ -19,10 +23,10 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
     t3 = t_hw_in + ap_k
     T_crit = rprop(fluido, "Tcrit", mezcla, T = 0, H = 0)
 
+    try:
+        if t3 > T_crit:
+            raise ErrorTemperaturaTranscritica(f"Temperatura transcrítica en el punto de descarga: {t3:.1f}ºC > {T_crit:.1f}ºC")
 
-    if t3 > T_crit:
-        raise ErrorTemperaturaTranscritica(f"Temperatura transcrítica en el punto de descarga: {t3:.1f}ºC > {T_crit:.1f}ºC")
-    else:
         PK = rprop(fluido, "P", mezcla, T = t3 + SUB, Q = 0)
 
         # Punto 3
@@ -36,7 +40,7 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
         P0 = P4.P
 
         # Rendimiento isentrópico
-        rend_iso_h = 1
+        rend_iso_h = 0.6
 
         # Punto 1
         t_sat_1 = rprop(fluido, "T", mezcla, P = P0, Q = 1)
@@ -48,8 +52,8 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
         h_2 = P1.H + (h_2_s - P1.H)/rend_iso_h
         P2 = TPoint(fluido, mezcla, P = PK, H = h_2)
         P2.calcular("H", "Q", "D")
-        if P2.Q <= 1:
-            raise ErrorPuntoBifasico("El punto de descarga cae en la zona bifásica")
+        # if P2.Q <= 1:
+        #     raise ErrorPuntoBifasico("El punto de descarga cae en la zona bifásica")
 
         # COP y VCC
         COP = (P2.H - P3.H)/(P2.H - P1.H)
@@ -100,10 +104,7 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
         for i, p in enumerate(puntos, start=1):
             string_resultado += f"Punto {i}: P = {p.P:.2f} bar, H = {p.H:.1f} kJ/kg, T = {p.T:.2f} ºC, Q = {p.Q:.3f}\n"
         
-
-        resultado = {
-            "fluido": fluido,
-            "mezcla": mezcla,
+        resultados_adicionales = {
             "COP": COP,
             "VCC": VCC,
             "puntos": puntos,
@@ -114,10 +115,27 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
             "pinch": pinch,
             "glide": [glide_k, glide_0],
             "string resultado": string_resultado,
-            "error": None
+            "error": "-"
         }
 
-        return resultado
+        resultado = resultado | resultados_adicionales
+
+    except ErrorPuntoBifasico:
+        resultado["COP"] = "-"
+        resultado["VCC"] = "-"
+        resultado["error"] = "Bifásico"
+
+    except ErrorTemperaturaTranscritica:
+        resultado["COP"] = "-"
+        resultado["VCC"] = "-"
+        resultado["error"] = "Transcrítico"
+
+    except RuntimeError:
+        resultado["COP"] = "-"
+        resultado["VCC"] = "-"
+        resultado["error"] = "REFPROP"
+
+    return resultado
 
 
 

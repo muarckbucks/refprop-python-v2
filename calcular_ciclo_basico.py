@@ -7,7 +7,6 @@ Cliente = ClienteRefprop(r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL")
 
 def main():
     # DATOS BÁSICOS
-    fluido = "PROPANE"
     mezcla = [1.0]
 
     t_hw_in = 47
@@ -28,6 +27,8 @@ def main():
     posibles_refrigerantes = ["CO2", "BUTANE", "ISOBUTANE", "PROPYLENE",
                               "PENTANE", "DME", "ETHANE", "PROPANE", "HEXANE",
                               "TOLUENE"]
+
+    # posibles_refrigerantes = ["PROPANE", "BUTANE", "DME"]
 
 
     
@@ -51,27 +52,24 @@ def main():
                 prop_b = 1 - prop_a
                 mezcla = [prop_a, prop_b]
 
-                try:
-                    resultado = calcular_ciclo_basico([ref_a, ref_b], mezcla, temperaturas_agua)
-                    # Ir imprimiendo resultados
-                    string_comp = ""
+
+                resultado = calcular_ciclo_basico([ref_a, ref_b], mezcla, temperaturas_agua)
+                # Ir imprimiendo resultados
+                string_comp = ""
+
+                # Comprobar si no ha dado error el cálculo
+                if "glide" in resultado:
                     for fluid, comp in zip(resultado["fluido"], resultado["mezcla"]):
                         string_comp += f"{fluid}: {(comp*100):.0f}%, "
                     print(string_comp + f"COP = {resultado["COP"]:.3f}")
-                    # puntos_PH(resultado["puntos"], 1.5, 0.2)
-                except ErrorTemperaturaTranscritica:
-                    resultado = {"error": "ErrorTemperaturaTranscritica"}
-                except RuntimeError:
-                    resultado = {"error": "RuntimeError"}
-                except ErrorPuntoBifasico:
-                    resultado = {"error": "ErrorPuntoBifasico"}
+                # puntos_PH(resultado["puntos"], 1.5, 0.2)
 
                 resultados[ref_a][ref_b].append(resultado)
                 resultados[ref_b][ref_a].append(resultado)
 
         
     # Guardar resultados en json
-    claves_permitidas = {"fliudo", "mezcla", "presiones", "caudales másicos", "caudales volumétricos", "COP", "VCC", "pinch", "glide", "error"}
+    claves_permitidas = {"fluido", "mezcla", "presiones", "caudales másicos", "caudales volumétricos", "COP", "VCC", "pinch", "glide", "error"}
     def filtrar_resultados(resultados: dict[str, dict[str, list[dict[str, Any]]]],
                            claves_permitidas = set[str]) -> dict[str, dict[str, list[dict[str, Any]]]]:
         return {
