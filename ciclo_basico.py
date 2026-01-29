@@ -10,6 +10,7 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
 
     resultado["fluido"] = fluido
     resultado["mezcla"] = mezcla
+    resultado["temperaturas agua"] = temperaturas_agua
 
     [t_hw_in, t_hw_out] = temperaturas_agua["t_hw"]
     [t_cw_in, t_cw_out] = temperaturas_agua["t_cw"]
@@ -115,7 +116,7 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
             "pinch": pinch,
             "glide": [glide_k, glide_0],
             "string resultado": string_resultado,
-            "error": "-"
+            "error": "-",
         }
 
         resultado = resultado | resultados_adicionales

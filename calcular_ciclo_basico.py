@@ -69,7 +69,7 @@ def main():
 
         
     # Guardar resultados en json
-    claves_permitidas = {"fluido", "mezcla", "presiones", "caudales másicos", "caudales volumétricos", "COP", "VCC", "pinch", "glide", "error"}
+    claves_permitidas = {"fluido", "mezcla", "presiones", "caudales másicos", "caudales volumétricos", "COP", "VCC", "pinch", "glide", "error", "temperaturas agua"}
     def filtrar_resultados(resultados: dict[str, dict[str, list[dict[str, Any]]]],
                            claves_permitidas = set[str]) -> dict[str, dict[str, list[dict[str, Any]]]]:
         return {
