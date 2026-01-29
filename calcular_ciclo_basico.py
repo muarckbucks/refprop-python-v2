@@ -62,6 +62,10 @@ def main():
                     for fluid, comp in zip(resultado["fluido"], resultado["mezcla"]):
                         string_comp += f"{fluid}: {(comp*100):.0f}%, "
                     print(string_comp + f"COP = {resultado["COP"]:.3f}")
+                else:
+                    for fluid, comp in zip(resultado["fluido"], resultado["mezcla"]):
+                        string_comp += f"{fluid}: {(comp*100):.0f}%, "
+                    print(string_comp + f"ERROR = {resultado["error"]}")                    
                 # puntos_PH(resultado["puntos"], 1.5, 0.2)
 
                 resultados[ref_a][ref_b].append(resultado)
