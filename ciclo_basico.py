@@ -53,8 +53,8 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
         h_2 = P1.H + (h_2_s - P1.H)/rend_iso_h
         P2 = TPoint(fluido, mezcla, P = PK, H = h_2)
         P2.calcular("H", "Q", "D")
-        # if P2.Q <= 1:
-        #     raise ErrorPuntoBifasico("El punto de descarga cae en la zona bifásica")
+        if P2.Q <= 1:
+            raise ErrorPuntoBifasico("El punto de descarga cae en la zona bifásica")
 
         # COP y VCC
         COP = (P2.H - P3.H)/(P2.H - P1.H)
@@ -115,7 +115,7 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
             "caudales volumétricos": [ratio_v_GlycolHot_R, ratio_v_GlycolCold_R],
             "pinch": pinch,
             "glide": [glide_k, glide_0],
-            "string resultado": string_resultado,
+            # "string resultado": string_resultado,
             "error": "-",
         }
 
@@ -130,6 +130,11 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
         resultado["COP"] = "-"
         resultado["VCC"] = "-"
         resultado["error"] = "Transcrítico"
+    
+    except ZeroDivisionError:
+        resultado["COP"] = "-"
+        resultado["VCC"] = "-"
+        resultado["error"] = "Division 0"
 
     except RuntimeError:
         resultado["COP"] = "-"
