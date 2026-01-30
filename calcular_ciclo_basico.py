@@ -54,7 +54,7 @@ def calcular_mezclas(fichero_json, posibles_refrigerantes, temperaturas_agua):
 
         
     # Guardar resultados en json
-    claves_permitidas = {"fluido", "mezcla", "presiones", "caudales másicos", "caudales volumétricos", "COP", "VCC", "pinch", "glide", "error", "temperaturas agua"}
+    claves_permitidas = {"fluido", "mezcla", "presiones", "entalpias", "temperaturas", "caudales másicos", "caudales volumétricos", "COP", "VCC", "pinch", "glide", "error", "temperaturas agua"}
     def filtrar_resultados(resultados: dict[str, dict[str, list[dict[str, Any]]]],
                            claves_permitidas = set[str]) -> dict[str, dict[str, list[dict[str, Any]]]]:
         return {

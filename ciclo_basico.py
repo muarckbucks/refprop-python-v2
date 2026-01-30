@@ -52,7 +52,7 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
         h_2_s = rprop(fluido, "H", mezcla, P = PK, S = P1.S)
         h_2 = P1.H + (h_2_s - P1.H)/rend_iso_h
         P2 = TPoint(fluido, mezcla, P = PK, H = h_2)
-        P2.calcular("H", "Q", "D")
+        P2.calcular("H", "Q", "D", "T")
         if P2.Q <= 1:
             raise ErrorPuntoBifasico("El punto de descarga cae en la zona bifásica")
 
@@ -110,7 +110,9 @@ Temperaturas de evaporación: {P0_vap_sat.T:.1f}ºC y {P0_liq_sat.T:.1f}ºC: gli
             "VCC": VCC,
             "puntos": puntos,
             "puntos saturados": puntos_saturados,
-            "presiones": [PK, P0],
+            "presiones": [P0, PK, PK, P0],
+            "entalpias": [P1.H, P2.H, P3.H, P4.H],
+            "temperaturas": [P1.T, P2.T, P3.T, P4.T],
             "caudales másicos": [ratio_m_GlycolHot_R, ratio_m_GlycolCold_R],
             "caudales volumétricos": [ratio_v_GlycolHot_R, ratio_v_GlycolCold_R],
             "pinch": pinch,
