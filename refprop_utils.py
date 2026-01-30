@@ -1,5 +1,7 @@
 from ctREFPROP.ctREFPROP import REFPROPFunctionLibrary
 import re, os, subprocess, json
+from typing import Any
+from copy import deepcopy
 
 # ERRORES
 class ErrorTemperaturaTranscritica(Exception):
@@ -205,7 +207,15 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
     # Return single value if only one output, else list
     return resultados[0] if len(resultados) == 1 else resultados
 
-class TPoint:
+class Serializable:
+    def to_dict(self):
+        raise NotImplemented
+    
+    @classmethod
+    def from_dict(cls, dic):
+        raise NotImplemented
+
+class TPoint(Serializable):
     """
     Clase que guarda un punto termodinámico y calcula sus propiedades a demanda (20% más lento que el DLL)
     """
@@ -222,9 +232,9 @@ class TPoint:
     # Lista interna de todas las posibles peticiones
     _props = ["T", "P", "D", "V", "E", "H", "S", "Q"]
 
-    def __init__(self, fluid: str | list[str], mezcla: list[float] | None = None, **kwargs) -> None:
+    def __init__(self, fluido: str | list[str], mezcla: list[float] | None = None, **kwargs) -> None:
         # Guardar el input
-        self.fluid = fluid
+        self.fluido = fluido
         self.mezcla = mezcla
         self.kwargs = kwargs
         for clave, valor in kwargs.items():
@@ -234,7 +244,7 @@ class TPoint:
         self.cliente = ClienteRefprop.obtener_instancia()
     
     def _compute(self, nombre):
-        return rprop(self.fluid, nombre, self.mezcla, **self.kwargs)
+        return rprop(self.fluido, nombre, self.mezcla, **self.kwargs)
     
     def __getattr__(self, nombre):
         """
@@ -254,7 +264,7 @@ class TPoint:
         salida_lista = []
         for arg in args:
             salida_lista.append(arg)
-        resultado = rprop(self.fluid, salida_lista, self.mezcla, **self.kwargs)
+        resultado = rprop(self.fluido, salida_lista, self.mezcla, **self.kwargs)
 
         for nombre, valor in zip(args, resultado):
             setattr(self, nombre, valor)
@@ -268,6 +278,90 @@ class TPoint:
         for nombre, valor in self.__dict__.items():     
             print(f"{nombre}: {valor}")        
         print(27*"#"+"\n")
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "__class__": self.__class__.__name__,
+            "fluido": self.fluido,
+            "mezcla": self.mezcla,
+            "kwargs": self.kwargs
+        }
+    
+    @classmethod
+    def from_dict(cls, dic: dict[str, Any]) -> "TPoint":
+        return cls(dic["fluido"], dic.get("mezcla"), **dic.get("kwargs"))
+
+class CicloOutput(Serializable):
+    def __init__(self, COP: float | None = None,
+                 VCC: float | None = None,
+                 fluido: str | None = None,
+                 mezcla: list[float] | None = None,
+                 temperaturas_agua: dict[str, list[float]] | None = None,
+                 puntos: dict[str, TPoint] | None = None,
+                 puntos_sat: list[TPoint] | None = None,
+                 caudales_mas: list[float] | None = None,
+                 caudales_vol: list[float] | None = None,
+                 pinch: float | None = None,
+                 glide: list[float] | None = None,
+                 error: str | None = None):
+        
+        self.COP = COP
+        self.VCC = VCC
+        self.fluido = fluido
+        self.mezcla = mezcla
+        self.temperaturas_agua = temperaturas_agua
+        self.puntos = puntos
+        self.puntos_sat = puntos_sat
+        self.caudales_mas = caudales_mas
+        self.caudales_vol = caudales_vol
+        self.pinch = pinch
+        self.glide = glide
+        self.error = error
+
+    def to_dict(self) -> dict[str, Any]:
+
+        return {"__class__": self.__class__.__name__,
+                "__data__": serializar(self.__dict__),
+        }
+
+    
+    @classmethod
+    def from_dict(cls, dic: dict[str, Any]) -> "CicloOutput":
+        obj = cls.__new__(cls)
+        obj.__dict__ = deserializar(dic["__data__"])
+        return obj
+
+def serializar(obj):
+    if isinstance(obj, Serializable):
+        return obj.to_dict()
+    
+    if isinstance(obj, dict):
+        return {k: serializar(v) for k, v in obj.items()}
+    
+    if isinstance(obj, (list, tuple, set)):
+        t = type(obj)
+        return t(serializar(v) for v in obj)
+    
+    return obj
+
+REGISTRO_CLASES = {
+    "TPoint": TPoint,
+    "CicloOutput": CicloOutput
+}
+
+def deserializar(obj):
+    if isinstance(obj, dict):
+        if "__class__" in obj:
+            cls = REGISTRO_CLASES[obj["__class__"]]
+            return cls.from_dict(obj)
+
+        return {k: deserializar(v) for k, v in obj.items()}
+
+    if isinstance(obj, (list, tuple, set)):
+        t = type(obj)
+        return t(deserializar(v) for v in obj)
+
+    return obj
 
 def diagrama_PH(fluido: str | list[str], mezcla: list[float], P_min: float, P_max: float, H_min: float,
                 H_max: float, num_puntos_sat: int, num_puntos_temp: int, base_log: float,
@@ -327,7 +421,7 @@ def TPoint_a_lista(puntos: list[TPoint]) -> list[list[float]]:
 
 def puntos_PH(puntos: list[TPoint], base_log: float, margen: float | None = 0.2, play: bool | None = None) -> None:
     punto1 = puntos[0]
-    fluido = punto1.fluid
+    fluido = punto1.fluido
     mezcla = punto1.mezcla
     [H_min_punto, H_max_punto, P_min_punto, P_max_punto] = [punto1.H, punto1.H, punto1.P, punto1.P]
 
