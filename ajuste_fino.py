@@ -25,6 +25,15 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
 
     refrigerantes_revisados: set[str] = set()
 
+    # Calcular VCC de referencia
+    temperaturas_agua = list(list(data.values())[0].values())[0][0]["temperaturas agua"]
+    margen_vcc = 0.3
+    vcc_propano = calcular_ciclo_basico("PROPANE", [1.0],
+                                        temperaturas_agua)["VCC"]
+    vcc_min = (1 - margen_vcc) * vcc_propano
+    vcc_max = (1 + margen_vcc) * vcc_propano
+
+
     for index_1, [ref_1, sub_data_1] in enumerate(data.items()):
 
         refrigerantes_revisados.add(ref_1)
@@ -34,13 +43,20 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
             if ref_2 not in refrigerantes_revisados:
 
                 fluido = lista_resultados[0]["fluido"]
-                temperaturas_agua = lista_resultados[0]["temperaturas agua"]
+                # Filtrar para quitar los que tienen errores
+                lista_res_temp_1 = [res for res in lista_resultados if res["error"] == "-"]
+                # Filtrar por los que tingan VCC correcto
+                lista_res_temp_2 = [res for res in lista_res_temp_1 if (vcc_min <= res["VCC"] <= vcc_max)]
+                # Filtrar por temperatura de descarga < 130ºC
+                lista_res_temp_1 = [res for res in lista_res_temp_2 if res["temperaturas"][1] < 130]
+                # Filtrar por pinch > 0
+                lista_res_temp_2 = [res for res in lista_res_temp_1 if res["pinch"] > 0]
+                # Filtrar por glide < 10ºC
+                lista_res_temp_1 = [res for res in lista_res_temp_2 if res["glide"][0] < 10 and res["glide"][1] < 10]
                 # Guardar 2 resultados con mayor COP
-                lista_res_temp = [res for res in lista_resultados if isinstance(res["COP"], float)]
-                lista_resultados = sorted(lista_res_temp, key = lambda resultado: resultado["COP"], reverse = True)[:2]
+                lista_resultados = sorted(lista_res_temp_1, key = lambda resultado: resultado["COP"], reverse = True)[:2]
 
                 comps = []
-
                 # Comprobar cuántos resultados dan COP correcto
                 if len(lista_resultados) == 2: # Si hay 2 elementos coger los que tienen más COP
                     
@@ -63,8 +79,8 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
 
                 elif len(lista_resultados) == 1:
                     # Si solo hay un elemento ir desde +- 5% composición
-                    comp_1 = [min(lista_resultados[0]["mezcla"][0] - 0.05, 0), 1 - min(lista_resultados[0]["mezcla"][0] - 0.05, 0)]
-                    comp_2 = [max(lista_resultados[0]["mezcla"][0] + 0.05, 1), 1 - max(lista_resultados[0]["mezcla"][0] + 0.05, 1)]
+                    comp_1 = [max(lista_resultados[0]["mezcla"][0] - 0.05, 0), 1 - max(lista_resultados[0]["mezcla"][0] - 0.05, 0)]
+                    comp_2 = [min(lista_resultados[0]["mezcla"][0] + 0.05, 1), 1 - min(lista_resultados[0]["mezcla"][0] + 0.05, 1)]
                     comps.append([comp_1, comp_2])
 
                 else: # len(lista_resultados) == 0
@@ -74,7 +90,6 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
                 # Iterar para cada rango de composiciones (solo útil cuando 
                 # las 2 soluciones con más COP están alejadas y hay que 
                 # crear 2 rangos diferentes)
-
                 for comp_i in comps:
                     # Crear rango de composiciones que vaya desde comp1 a comp2
                     [comp_1, comp_2] = comp_i
@@ -89,7 +104,7 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
                         resultados.append(resultado)
 
                         string_comp = ""
-                        if resultado["error"] != "-":
+                        if resultado["error"] == "-":
                             for fluid, comp in zip(resultado["fluido"], resultado["mezcla"]):
                                 string_comp += f"{fluid}: {(comp*100):.1f}%, "
                             print(string_comp + f"COP = {resultado["COP"]:.3f}")
@@ -98,10 +113,15 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
                                 string_comp += f"{fluid}: {(comp*100):.1f}%, "
                             print(string_comp + f"ERROR = {resultado["error"]}")
 
+                
+                # Filtrar otra vez por errores, vcc, temp. descarga, pinch y glide
+                resultados_temp_1 = [res for res in resultados if res["error"] == "-"]
+                resultados_temp_2 = [res for res in resultados_temp_1 if (vcc_min <= res["VCC"] <= vcc_max)]
+                resultados_temp_1 = [res for res in resultados_temp_2 if res["temperaturas"][1] < 130]
+                resultados_temp_2 = [res for res in resultados_temp_1 if res["pinch"] > 0]
+                resultados_temp_1 = [res for res in resultados_temp_2 if res["glide"][0] < 10 and res["glide"][1] < 10]
                 # Quedarse con el COP más grande
-
-                resultados = [res for res in resultados if res["error"] == "-"]
-                res_mayor_COP = sorted(resultados, key = lambda resultado: resultado["COP"], reverse = True)[0]
+                res_mayor_COP = max(resultados_temp_1, key=lambda r: r["COP"])
 
                 resultado_fino[ref_1][ref_2] |= res_mayor_COP
                 resultado_fino[ref_2][ref_1] |= res_mayor_COP
@@ -109,7 +129,7 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
                 string_comp = ""
                 for fluid, comp in zip(res_mayor_COP["fluido"], res_mayor_COP["mezcla"]):
                     string_comp += f"{fluid}: {(comp*100):.1f}%, "
-                print("\nProporción con más COP: " + string_comp + f"COP = {res_mayor_COP["COP"]:.3f}\n")
+                print("\nProporción VÁLIDA con más COP: " + string_comp + f"COP = {res_mayor_COP["COP"]:.3f}\n")
 
 
     # Guardar resultados en json
@@ -206,7 +226,15 @@ def json_a_excel(
                     if k not in keys_filtradas:
                         continue
                     c_key = ws.cell(row=fila, column=col_actual, value=k)
-                    c_val = ws.cell(row=fila, column=col_actual + 1, value= round(pares[k], 3))
+                    if k == "glide":
+                        texto = ""
+                        for v in pares[k]:
+                            texto += f"{v:.2f}ºC "
+                        c_val = ws.cell(row=fila, column=col_actual + 1, value= texto)
+                    elif k == "pinch":
+                        c_val = ws.cell(row=fila, column=col_actual + 1, value= f"{pares[k]:.2f} ºC")
+                    else:
+                        c_val = ws.cell(row=fila, column=col_actual + 1, value= round(pares[k], 3))
                     c_key.alignment = align_center
                     c_val.alignment = align_center
                     fila += 1
@@ -236,7 +264,7 @@ def main():
     fichero_json_fino = r"resultados\resultados_finos_basico.json"
     fichero_excel = r"resultados\resultados_finos_basico.xlsx"
 
-    keys_permitidas = ["COP", "VCC"]
+    keys_permitidas = ["COP", "VCC", "pinch", "glide"]
 
     ancho_col_key = 20
     ancho_col_value = 30
