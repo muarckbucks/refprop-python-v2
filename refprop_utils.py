@@ -1,7 +1,6 @@
 from ctREFPROP.ctREFPROP import REFPROPFunctionLibrary
 import re, os, subprocess, json
 from typing import Any
-from copy import deepcopy
 
 # ERRORES
 class ErrorTemperaturaTranscritica(Exception):
@@ -363,6 +362,17 @@ def deserializar(obj):
 
     return obj
 
+def init_refprop(ruta_dll: str = r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL") -> None:
+    """Initialize the module-level ClienteRefprop singleton for the current process.
+
+    Call this in worker processes (use as ProcessPoolExecutor initializer) so each
+    process creates its own REFPROP handle and avoids cross-process C-handle pickling.
+    """
+    try:
+        ClienteRefprop.obtener_instancia()
+    except RuntimeError:
+        ClienteRefprop(ruta_dll)
+
 def diagrama_PH(fluido: str | list[str], mezcla: list[float], P_min: float, P_max: float, H_min: float,
                 H_max: float, num_puntos_sat: int, num_puntos_temp: int, base_log: float,
                 play: bool | None = None, puntos: list[TPoint] | None = None) -> None:
@@ -449,15 +459,7 @@ def puntos_PH(puntos: list[TPoint], base_log: float, margen: float | None = 0.2,
 
 def main():
 
-    fluid = "PROPANE"
-    mezcla = [1.0]
-    P1 = TPoint(fluid, mezcla, P = 2, H = 600)
-    P2 = TPoint(fluid, mezcla, P = 15, H = 700)
-    P3 = TPoint(fluid, mezcla, P = 15, H = 300)
-    P4 = TPoint(fluid, mezcla, P = 2, H = 300)
-    puntos = [P1, P2, P3, P4]
-
-    puntos_PH(puntos, base_log = 1.5, margen = 0.2)
+    ...
 
 if __name__ == "__main__":
     main()

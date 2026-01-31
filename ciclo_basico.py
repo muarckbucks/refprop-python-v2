@@ -7,7 +7,10 @@ from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Alignment, Font
 
-Cliente = ClienteRefprop(r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL")
+# NOTE: Do not instantiate ClienteRefprop at import time. Use `init_refprop()` in
+# the main process and as a per-process initializer for ProcessPoolExecutor so
+# each process creates its own REFPROP handle.
+
 
 def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
                    temperaturas_agua: dict[str, list[float]]) -> CicloOutput:
@@ -138,6 +141,21 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
         output = CicloOutput(**resultado)
 
     return output
+
+def worker_calcular(args):
+    """Top-level worker wrapper for multiprocessing.
+
+    Expects a single tuple argument: (fluido, mezcla, temperaturas_agua).
+    Initializes REFPROP for this process and returns a serializable dict.
+    """
+    from refprop_utils import init_refprop, serializar
+
+    # Ensure REFPROP client exists in this worker process
+    init_refprop()
+
+    fluido, mezcla, temperaturas_agua = args
+    res = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
+    return serializar(res)
 
 def calcular_mezclas(fichero_json: str, posibles_refrigerantes: list[str], temperaturas_agua: dict[str, list[float]]):
     n_calcs = 21
@@ -549,6 +567,7 @@ def json_a_excel_fino(
 
 
 def main():
+    init_refprop()
     # DATOS BÁSICOS
     t_hw_in = 47
     t_hw_out = 55
