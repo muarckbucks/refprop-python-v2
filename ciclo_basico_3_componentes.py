@@ -1,7 +1,10 @@
 from refprop_utils import *
-from ciclo_basico import calcular_ciclo_basico
+from refprop_utils import deserializar, init_refprop
+from ciclo_basico import calcular_ciclo_basico, worker_calcular
 import numpy as np
 import json
+import concurrent.futures
+import os
 
 # Cálculo bruto
 
@@ -52,15 +55,19 @@ def calcular_resultados(posibles_refrigerantes: list[str], temperaturas_agua: di
     rango_proporciones = crear_props_3_ref(n_prop) # 21 para que los saltos sean del 5%
 
     resultados: list[CicloOutput] = []
+    # Build task list (each task is (fluido, mezcla, temperaturas_agua))
+    tasks = [ (comb_ref, prop, temperaturas_agua)
+              for comb_ref in combinaciones_ref
+              for prop in rango_proporciones ]
 
-    for comb_ref in combinaciones_ref:
-        for prop in rango_proporciones:
-            
-            res = calcular_ciclo_basico(comb_ref, prop, temperaturas_agua)
-
-            mostrar_resultado(res)
-
-            resultados.append(res)
+    if tasks:
+        cpu = os.cpu_count() or 1
+        chunksize = max(1, len(tasks) // (cpu * 4))
+        with concurrent.futures.ProcessPoolExecutor(initializer=init_refprop) as ex:
+            for res_dict in ex.map(worker_calcular, tasks, chunksize=chunksize):
+                res = deserializar(res_dict)
+                mostrar_resultado(res)
+                resultados.append(res)
     
     return resultados
 
@@ -242,13 +249,16 @@ def refinar_mezclas(temperaturas_agua: dict[str, list[float]], fichero_json: str
                 comps = crear_rango_composiciones(resultados)
 
                 resultados_finos = []
-                for comp in comps:
-                    for coord in comp:
-                        resultado = calcular_ciclo_basico([ref_a, ref_b, ref_c], coord, temperaturas_agua)
-
-                        mostrar_resultado(resultado, 1)
-
-                        resultados_finos.append(resultado)
+                # Parallelize fine sampling over coords
+                tasks = [ ([ref_a, ref_b, ref_c], coord, temperaturas_agua) for comp in comps for coord in comp ]
+                if tasks:
+                    cpu = os.cpu_count() or 1
+                    chunksize = max(1, len(tasks) // (cpu * 4))
+                    with concurrent.futures.ProcessPoolExecutor(initializer=init_refprop) as ex:
+                        for res_dict in ex.map(worker_calcular, tasks, chunksize=chunksize):
+                            resultado = deserializar(res_dict)
+                            mostrar_resultado(resultado, 1)
+                            resultados_finos.append(resultado)
 
                 resultados_validos = filtrar(resultados_finos, vcc_min, vcc_max) # Volver a filtrar los resultados
                 if not resultados_validos:
@@ -277,8 +287,8 @@ def pasar_a_diccionario_fino(resultados: list[CicloOutput]) -> dict[str, dict[st
 
 
 
-
 def main():
+    init_refprop()
     # DATOS BÁSICOS
 
     fichero_json = r"resultados\resultados_ciclo_basico_3_comp.json"
@@ -297,8 +307,12 @@ def main():
 
     posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "PROPYLENE",
                                 "PENTANE", "DME", "ETHANE", "HEXANE", "TOLUENE"]
+    
+    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE"]
 
     n_prop = 21 # 5% de salto entre proporción y proporción
+
+    n_prop = 5
 
     # Llamar a las funciones
 
