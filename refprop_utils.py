@@ -2,26 +2,14 @@ from ctREFPROP.ctREFPROP import REFPROPFunctionLibrary
 import re, os, subprocess, json
 from typing import Any
 
+RP = None
+
 # ERRORES
 class ErrorTemperaturaTranscritica(Exception):
     ...
 
 class ErrorPuntoBifasico(Exception):
     ...
-
-class ClienteRefprop:
-    _instancia = None
-
-    def __init__(self, ruta_dll: str):
-        self.ruta = ruta_dll
-        self.RP = REFPROPFunctionLibrary(ruta_dll)
-        ClienteRefprop._instancia = self
-    
-    @staticmethod
-    def obtener_instancia():
-        if ClienteRefprop._instancia is None:
-            raise RuntimeError("ClienteRefprop no inicializado")
-        return ClienteRefprop._instancia
 
 def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float] | None = None, **kwargs: float) -> float | list[float]:
     """
@@ -63,8 +51,6 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
     rprop("CO2", "T", [1.0], P = 5, H = 300)  # Returns T (float for single output)
     """
 
-    # Obtener el cliente
-    cliente = ClienteRefprop.obtener_instancia()
 
     # Valor predeterminado de mezcla
     if mezcla is None:
@@ -153,8 +139,8 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
 
     # Llamar a REFPROP
     ncomp = len(fluidos_lista)
-    cliente.RP.SETUPdll(ncomp, fluidos_refprop, '', 'DEF')
-    res = cliente.RP.REFPROPdll(fluidos_refprop, magnitud_entrada_refprop, salida_refprop, cliente.RP.SI_WITH_C, 1, 0,
+    RP.SETUPdll(ncomp, fluidos_refprop, '', 'DEF')
+    res = RP.REFPROPdll(fluidos_refprop, magnitud_entrada_refprop, salida_refprop, RP.SI_WITH_C, 1, 0,
                                 valores_entrada_refprop[0], valores_entrada_refprop[1], mezcla)
     
     resultados: list[float] = []
@@ -176,7 +162,7 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
 
         for _ in range(100):
             P_mid = 0.5 * (P_low + P_high)
-            out = cliente.RP.REFPROPdll(fluidos_refprop, "PQ", "P;T", cliente.RP.SI_WITH_C,
+            out = RP.REFPROPdll(fluidos_refprop, "PQ", "P;T", RP.SI_WITH_C,
                                         1, 0, P_mid, 0.5, mezcla)
             
             if out.ierr != 0:
@@ -188,7 +174,7 @@ def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float]
                 P_low = P_mid
             else:
                 P_crit = P_low
-                T_crit = cliente.RP.REFPROPdll(fluidos_refprop, "PQ", "T", cliente.RP.SI_WITH_C,
+                T_crit = RP.REFPROPdll(fluidos_refprop, "PQ", "T", RP.SI_WITH_C,
                                                  1, 0, P_low, 0.5, mezcla).Output[0]
                 break
         else:
@@ -239,8 +225,6 @@ class TPoint(Serializable):
         for clave, valor in kwargs.items():
             setattr(self, clave, valor)
 
-        # Obtener el cliente
-        self.cliente = ClienteRefprop.obtener_instancia()
     
     def _compute(self, nombre):
         return rprop(self.fluido, nombre, self.mezcla, **self.kwargs)
@@ -363,15 +347,8 @@ def deserializar(obj):
     return obj
 
 def init_refprop(ruta_dll: str = r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL") -> None:
-    """Initialize the module-level ClienteRefprop singleton for the current process.
-
-    Call this in worker processes (use as ProcessPoolExecutor initializer) so each
-    process creates its own REFPROP handle and avoids cross-process C-handle pickling.
-    """
-    try:
-        ClienteRefprop.obtener_instancia()
-    except RuntimeError:
-        ClienteRefprop(ruta_dll)
+    global RP
+    RP = REFPROPFunctionLibrary(ruta_dll)
 
 def diagrama_PH(fluido: str | list[str], mezcla: list[float], P_min: float, P_max: float, H_min: float,
                 H_max: float, num_puntos_sat: int, num_puntos_temp: int, base_log: float,

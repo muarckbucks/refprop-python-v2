@@ -1,10 +1,10 @@
 from refprop_utils import *
-from refprop_utils import deserializar, init_refprop
 from ciclo_basico import calcular_ciclo_basico, worker_calcular
 import numpy as np
-import json
-import concurrent.futures
-import os
+import json, os
+from concurrent.futures import ProcessPoolExecutor
+from pprint import pprint
+from tqdm import tqdm
 
 # Cálculo bruto
 
@@ -55,21 +55,23 @@ def calcular_resultados(posibles_refrigerantes: list[str], temperaturas_agua: di
     rango_proporciones = crear_props_3_ref(n_prop) # 21 para que los saltos sean del 5%
 
     resultados: list[CicloOutput] = []
-    # Build task list (each task is (fluido, mezcla, temperaturas_agua))
-    tasks = [ (comb_ref, prop, temperaturas_agua)
-              for comb_ref in combinaciones_ref
-              for prop in rango_proporciones ]
+    # Crear lista de inputs (cada input es: [fluido, mezcla, temperaturas_agua])
+    lista_inputs: tuple[list[str], list[float], dict[str, list[float]]] = [
+        (comb_ref, prop, temperaturas_agua)
+        for comb_ref in combinaciones_ref
+        for prop in rango_proporciones
+    ]
 
-    if tasks:
-        cpu = os.cpu_count() or 1
-        chunksize = max(1, len(tasks) // (cpu * 4))
-        with concurrent.futures.ProcessPoolExecutor(initializer=init_refprop) as ex:
-            for res_dict in ex.map(worker_calcular, tasks, chunksize=chunksize):
-                res = deserializar(res_dict)
-                mostrar_resultado(res)
-                resultados.append(res)
+    if lista_inputs:
+        cpu = os.cpu_count() // 2 or 1 # Usar la mitad de núcleos de la CPU
+        chunksize = 2 # Está bien para la duración de la función (aprox 1s)
+
+        print("### CÁLCULO BRUTO ###")
+
+        with ProcessPoolExecutor(max_workers=cpu, initializer=init_refprop) as ex:
+            resultados = list(tqdm(ex.map(worker_calcular, lista_inputs, chunksize=chunksize), total=len(lista_inputs))) # Devuelve ya serializado
     
-    return resultados
+    return deserializar(resultados)
 
 def pasar_a_diccionario(resultados: list[CicloOutput]) -> dict[str, dict[str, dict[str, list[CicloOutput]]]]:
 
@@ -95,7 +97,21 @@ def cargar_json(fichero_json: str) -> dict[str, dict[str, dict[str, list[CicloOu
 
     return deserializar(data)
 
-def filtrar(lista: list[CicloOutput], vcc_min, vcc_max) -> list[CicloOutput]:
+def recorrer_refrigerantes(dic: dict[str, any], vistos=None) -> list[str]:
+    if vistos is None:
+        vistos = set()
+    resultado = []
+    
+    for k, v in dic.items():
+        if k not in vistos:
+            resultado.append(k)
+            vistos.add(k)
+        if isinstance(v, dict):
+            resultado.extend(recorrer_refrigerantes(v, vistos))
+    
+    return resultado
+
+def filtrar(resultados: list[CicloOutput], vcc_min, vcc_max) -> list[CicloOutput]:
     filtros = [
         lambda r: r.error is None,
         lambda r: vcc_min <= r.VCC <= vcc_max,
@@ -105,11 +121,11 @@ def filtrar(lista: list[CicloOutput], vcc_min, vcc_max) -> list[CicloOutput]:
     ]
 
     for f in filtros:
-        if not lista:
-            break
-        lista = [r for r in lista if f(r)]
+        if not resultados:
+            return []
+        resultados = [r for r in resultados if f(r)]
 
-    return sorted(lista, key = lambda r: r.COP, reverse=True) # Si no hay ninguno devolverá []
+    return sorted(resultados, key = lambda r: r.COP, reverse=True) # Si no hay ninguno devolverá []
 
 def calcular_valores_referencia(temperaturas_agua: dict[str, list[float]]) -> list[float]:
 
@@ -184,7 +200,7 @@ def crear_rango_composiciones(resultados: list[CicloOutput]) -> list[list[list[f
     ]
     
     # Crear rangos
-    salto = 0.005
+    salto = 0.01
     new_comps: list[list[list[float]]] = []
 
     for coords in comps: 
@@ -231,46 +247,73 @@ def refinar_mezclas(temperaturas_agua: dict[str, list[float]], fichero_json: str
 
     [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(temperaturas_agua)
 
+    # Cargar fichero con resultados de cálculo bruto
     dic_resultados = cargar_json(fichero_json)
 
-    mejores_resultados: list[CicloOutput] = []
+    # Extraer los refrigerantes en el órden que se han calculado
+    posibles_refrigerantes = recorrer_refrigerantes(dic_resultados)
 
-    for ref_a, sub_data_a in dic_resultados.items():
+    # Crear la lista de combinaciones de refrigerantes
+    lista_refrigerantes = crear_lista_3_ref(posibles_refrigerantes)
 
-        for ref_b, sub_data_b in sub_data_a.items():
+    # Crear lista de los resultados en orden pero si el COP no es superior al del propano no hacer el cálculo fino
+    listas_resultados: list[list[CicloOutput]] = [
+        dic_resultados[ref_a][ref_b][ref_c]
+        if any(res.COP > cop_propano for res in dic_resultados[ref_a][ref_b][ref_c])
+        else []
+        for ref_a, ref_b, ref_c in lista_refrigerantes
+    ]
 
-            for ref_c, resultados in sub_data_b.items():
+    # Filtrar los resultados que no son válidos
+    listas_resultados_filtrados = [
+        filtrar(resultados, vcc_min, vcc_max)[:2] for resultados in listas_resultados
+    ]
 
-                resultados: list[CicloOutput] = filtrar(resultados, vcc_min, vcc_max)[:2] # Filtrar resultados y quedarse con los 2 mayores
+    # Calcular todas las posibles combinaciones
+    total_comps = [
+        crear_rango_composiciones(resultados)
+        for resultados in listas_resultados_filtrados
+    ]
 
-                if not resultados:
-                    continue
+    # Juntarlo todo en una única variable con todos los inputs
+    lista_inputs: tuple[list[str], list[float], dict[str, list[float]]] = [
+        (comb_ref, coord, temperaturas_agua)
+        for comb_ref in lista_refrigerantes
+        for comps in total_comps
+        for comp in comps
+        for coord in comp
 
-                comps = crear_rango_composiciones(resultados)
+    ]
 
-                resultados_finos = []
-                # Parallelize fine sampling over coords
-                tasks = [ ([ref_a, ref_b, ref_c], coord, temperaturas_agua) for comp in comps for coord in comp ]
-                if tasks:
-                    cpu = os.cpu_count() or 1
-                    chunksize = max(1, len(tasks) // (cpu * 4))
-                    with concurrent.futures.ProcessPoolExecutor(initializer=init_refprop) as ex:
-                        for res_dict in ex.map(worker_calcular, tasks, chunksize=chunksize):
-                            resultado = deserializar(res_dict)
-                            mostrar_resultado(resultado, 1)
-                            resultados_finos.append(resultado)
+    print("\n### CÁLCULO FINO ###")
 
-                resultados_validos = filtrar(resultados_finos, vcc_min, vcc_max) # Volver a filtrar los resultados
-                if not resultados_validos:
-                    continue
+    cpu = os.cpu_count() // 2 or 1 # Usar la mitad de núcleos de la CPU
+    chunksize = 2 # Está bien para la duración de la función (aprox 1s)
 
-                mejor_resultado = resultados_validos[0]
+    # Ejecutar cálculo paralelo
+    with ProcessPoolExecutor(max_workers=cpu, initializer=init_refprop) as ex:
+        resultados_finos = list(tqdm(ex.map(worker_calcular, lista_inputs, chunksize=chunksize), total=len(lista_inputs)))
 
-                mostrar_mejor_resultado(mejor_resultado, cop_propano)
 
-                mejores_resultados.append(mejor_resultado)
+
+    resultados_finos: list[CicloOutput] = deserializar(resultados_finos)
+
+    # Pasar a diccionario para que se pueda filtrar por refrigerantes
+    dic_res_finos = pasar_a_diccionario(resultados_finos)
+
+    mejores_resultados: list[CicloOutput] = [
+        filtrados[0]
+        for sub_dict_1 in dic_res_finos.values()
+        for sub_dict_2 in sub_dict_1.values()
+        for resultados in sub_dict_2.values()
+        if (filtrados := filtrar(resultados, vcc_min, vcc_max))
+    ]
+
 
     return mejores_resultados
+
+
+    
 
 def pasar_a_diccionario_fino(resultados: list[CicloOutput]) -> dict[str, dict[str, dict[str, CicloOutput]]]:
 
@@ -323,9 +366,10 @@ def main():
 
     pasar_a_json(dic_resultados, fichero_json)
 
-    mejore_resultados = refinar_mezclas(temperaturas_agua, fichero_json)
+    # CÁLCULO FINO
+    mejores_resultados = refinar_mezclas(temperaturas_agua, fichero_json)
 
-    pasar_a_json(mejore_resultados, fichero_json_fino)
+    pasar_a_json(mejores_resultados, fichero_json_fino)
 
 
 if __name__ == "__main__":

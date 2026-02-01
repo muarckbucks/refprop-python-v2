@@ -143,15 +143,10 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
     return output
 
 def worker_calcular(args):
-    """Top-level worker wrapper for multiprocessing.
-
-    Expects a single tuple argument: (fluido, mezcla, temperaturas_agua).
-    Initializes REFPROP for this process and returns a serializable dict.
-    """
-    from refprop_utils import init_refprop, serializar
-
-    # Ensure REFPROP client exists in this worker process
-    init_refprop()
+    # Check REFPROP handle in the refprop_utils module (initializer sets this per process)
+    import refprop_utils
+    if refprop_utils.RP is None:
+        raise RuntimeError("REFPROP no inicializado en el worker")
 
     fluido, mezcla, temperaturas_agua = args
     res = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
