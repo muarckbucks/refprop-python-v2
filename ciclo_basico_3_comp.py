@@ -168,17 +168,17 @@ def crear_rango_composiciones(resultados: list[CicloOutput]) -> list[list[list[f
             comps.append(coords)
 
         elif igual_x:
-            # comparten X → ensanchar Y
+            # comparten X → ensanchar X y puntos entre Y
             x = props[0][0]
             ys = [p[1] for p in props]
-            coords = [[x, y + d] for y in ys for d in dy]
+            coords = [[x + d, y] for y in ys for d in dx]
             comps.append(coords)
 
         else:
-            # comparten Y → ensanchar X
+            # comparten Y → ensanchar Y y puntos entre X
             y = props[0][1]
             xs = [p[0] for p in props]
-            coords = [[x + d, y] for x in xs for d in dx]
+            coords = [[x, y + d] for x in xs for d in dy]
             comps.append(coords)
 
     elif len(resultados) == 1:
@@ -210,7 +210,9 @@ def crear_rango_composiciones(resultados: list[CicloOutput]) -> list[list[list[f
         n_y = int(round((y_max - y_min) / salto)) + 1
 
         comp: list[list[float]] = [
-            [x_min + i * salto, y_min + j * salto, 1 - (x_min + i * salto) - (y_min + j * salto)]
+            [round(x_min + i * salto, 3),
+             round(y_min + j * salto, 3),
+             round(1 - (x_min + i * salto) - (y_min + j * salto), 3)]
             for i in range(n_x)
             for j in range(n_y)
         ]
@@ -256,11 +258,9 @@ def refinar_mezclas(temperaturas_agua: dict[str, list[float]], fichero_json: str
     # Crear la lista de combinaciones de refrigerantes
     lista_refrigerantes = crear_lista_3_ref(posibles_refrigerantes)
 
-    # Crear lista de los resultados en orden pero si el COP no es superior al del propano no hacer el cálculo fino
+    # Crear lista de los resultados en orden
     listas_resultados: list[list[CicloOutput]] = [
         dic_resultados[ref_a][ref_b][ref_c]
-        if any(res.COP > cop_propano for res in dic_resultados[ref_a][ref_b][ref_c])
-        else []
         for ref_a, ref_b, ref_c in lista_refrigerantes
     ]
 
@@ -276,14 +276,12 @@ def refinar_mezclas(temperaturas_agua: dict[str, list[float]], fichero_json: str
     ]
 
     # Juntarlo todo en una única variable con todos los inputs
-    lista_inputs: tuple[list[str], list[float], dict[str, list[float]]] = [
-        (comb_ref, coord, temperaturas_agua)
-        for comb_ref in lista_refrigerantes
-        for comps in total_comps
-        for comp in comps
-        for coord in comp
+    lista_inputs = []
 
-    ]
+    for comb_ref, comps in zip(lista_refrigerantes, total_comps):
+        for coords in comps:
+            for coord in coords:
+                lista_inputs.append((comb_ref, coord, temperaturas_agua))
 
     print("\n### CÁLCULO FINO ###")
 
@@ -295,25 +293,22 @@ def refinar_mezclas(temperaturas_agua: dict[str, list[float]], fichero_json: str
         resultados_finos = list(tqdm(ex.map(worker_calcular, lista_inputs, chunksize=chunksize), total=len(lista_inputs)))
 
 
-
     resultados_finos: list[CicloOutput] = deserializar(resultados_finos)
 
     # Pasar a diccionario para que se pueda filtrar por refrigerantes
     dic_res_finos = pasar_a_diccionario(resultados_finos)
 
-    mejores_resultados: list[CicloOutput] = [
-        filtrados[0]
-        for sub_dict_1 in dic_res_finos.values()
-        for sub_dict_2 in sub_dict_1.values()
-        for resultados in sub_dict_2.values()
-        if (filtrados := filtrar(resultados, vcc_min, vcc_max))
-    ]
+    mejores_resultados: list[CicloOutput] = []
+    for sub_dict_1 in dic_res_finos.values():
+        for sub_dict_2 in sub_dict_1.values():
+            for resultados in sub_dict_2.values():
+                filtrados = filtrar(resultados, vcc_min, vcc_max)
+                if filtrados:
+                    mejores_resultados.append(filtrados[0])
 
+    mejores_resultados.sort(key = lambda res: res.COP, reverse=True) # Ordenar mejores resultados por COP
 
     return mejores_resultados
-
-
-    
 
 def pasar_a_diccionario_fino(resultados: list[CicloOutput]) -> dict[str, dict[str, dict[str, CicloOutput]]]:
 
@@ -351,13 +346,12 @@ def main():
     posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "PROPYLENE",
                                 "PENTANE", "DME", "ETHANE", "HEXANE", "TOLUENE"]
     
-    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE"]
-
     n_prop = 21 # 5% de salto entre proporción y proporción
 
-    n_prop = 5
+    # Prueba con menos refrigerantes
+    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "PROPYLENE"]
 
-    # Llamar a las funciones
+    n_prop = 11 # 10% de salto
 
     # CÁLCULO BRUTO
     resultados = calcular_resultados(posibles_refrigerantes, temperaturas_agua, n_prop)
