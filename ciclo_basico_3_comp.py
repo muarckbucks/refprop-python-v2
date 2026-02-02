@@ -323,6 +323,31 @@ def pasar_a_diccionario_fino(resultados: list[CicloOutput]) -> dict[str, dict[st
 
     return dic_resultados
 
+def guardar_txt(fichero_json_fino: str, fichero_txt: str, temperaturas_agua) -> None:
+    cop_propano = calcular_valores_referencia(temperaturas_agua)[2]
+    
+    with open(fichero_json_fino, "r") as f:
+        dic_res: list[CicloOutput] = deserializar(json.load(f))
+    
+    string_res: list[str] = []
+
+    for res in dic_res:
+        string_comp = ""
+
+        for fluid, comp in zip(res.fluido, res.mezcla):
+            string_comp += f"{fluid}: {(comp*100):.0f}%, "
+
+        proporcion = (res.COP / cop_propano - 1) * 100
+
+        if proporcion >= 0:
+            string_comp += f"COP {proporcion:.2f}% más GRANDE que el propano\n\n"
+        else:
+            string_comp += f"COP {-proporcion:.2f}% más PEQUEÑO que el propano\n\n"
+
+        string_res.append(string_comp)
+
+    with open(fichero_txt, "w",encoding="utf-8") as f:
+        f.writelines(string_res)
 
 
 def main():
@@ -331,6 +356,7 @@ def main():
 
     fichero_json = r"resultados\resultados_ciclo_basico_3_comp.json"
     fichero_json_fino = r"resultados\resultados_ciclo_basico_3_comp_fino.json"
+    fichero_txt = r"resultados\resultados_ciclo_basico_3_comp_fino.txt"
 
     t_hw_in = 47
     t_hw_out = 55
@@ -349,9 +375,9 @@ def main():
     n_prop = 21 # 5% de salto entre proporción y proporción
 
     # Prueba con menos refrigerantes
-    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "PROPYLENE"]
+    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "PROPYLENE", "PENTANE"]
 
-    n_prop = 11 # 10% de salto
+    n_prop = 21 # 10% de salto
 
     # CÁLCULO BRUTO
     resultados = calcular_resultados(posibles_refrigerantes, temperaturas_agua, n_prop)
@@ -365,6 +391,7 @@ def main():
 
     pasar_a_json(mejores_resultados, fichero_json_fino)
 
+    guardar_txt(fichero_json_fino, fichero_txt, temperaturas_agua)
 
 if __name__ == "__main__":
     main()
