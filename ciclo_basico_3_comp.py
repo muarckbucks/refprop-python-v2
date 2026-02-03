@@ -89,6 +89,15 @@ def pasar_a_json(dic_resultados: Any, fichero_json: str) -> None:
     with open(fichero_json, "w", encoding="utf-8") as f:
         json.dump(serializar(dic_resultados), f, ensure_ascii=False, indent=2)
 
+def filtrar_diccionario(dic_resultados, temperaturas_agua: dict[str, list[float]], posibles_refrigerantes: list[str]):
+
+    [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(temperaturas_agua)
+    
+    for [ref_a, ref_b, ref_c] in crear_lista_3_ref(posibles_refrigerantes):
+        dic_resultados[ref_a][ref_b][ref_c] = filtrar(dic_resultados[ref_a][ref_b][ref_c], vcc_min, vcc_max)
+
+    return dic_resultados
+
 # Cálculo fino
 
 def cargar_json(fichero_json: str) -> dict[str, dict[str, dict[str, list[CicloOutput]]]]:
@@ -116,6 +125,7 @@ def filtrar(resultados: list[CicloOutput], vcc_min, vcc_max) -> list[CicloOutput
         lambda r: r.error is None,
         lambda r: vcc_min <= r.VCC <= vcc_max,
         lambda r: r.puntos.get("2").T < 130,
+        lambda r: r.puntos.get("2").P < 25,
         lambda r: r.pinch > 0,
         lambda r: r.glide[0] < 10 and r.glide[1] < 10,
     ]
@@ -356,6 +366,7 @@ def main():
     # DATOS BÁSICOS
 
     fichero_json = r"resultados\res_ciclo_basico_3_comp.json"
+    fichero_json_filtrado = r"resultados\res_ciclo_basico_3_comp_filtrado.json"
     fichero_json_fino = r"resultados\res_ciclo_basico_3_comp_fino.json"
     fichero_txt = r"resultados\res_ciclo_basico_3_comp_fino.txt"
 
@@ -370,16 +381,15 @@ def main():
         "t_cw": [t_cw_in, t_cw_out]
     }
 
-    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "PROPYLENE",
-                                "PENTANE", "DME", "ETHANE", "HEXANE", "TOLUENE"]
-    
+    posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE",
+                                "PENTANE", "DME", "HEXANE", "TOLUENE"]
     n_prop = 21 # 5% de salto entre proporción y proporción
 
     # Prueba con menos refrigerantes
-    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "DME"]
+    posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
+    n_prop = 21
 
-    n_prop = 21 # 5% de salto
-
+    # P_max = 25
     # CÁLCULO BRUTO
     resultados = calcular_resultados(posibles_refrigerantes, temperaturas_agua, n_prop)
 
@@ -387,12 +397,17 @@ def main():
 
     pasar_a_json(dic_resultados, fichero_json)
 
+    dic_filtrado = filtrar_diccionario(dic_resultados, temperaturas_agua,
+                                                posibles_refrigerantes)
+    
+    pasar_a_json(dic_filtrado, fichero_json_filtrado)
+
     # CÁLCULO FINO
-    mejores_resultados = refinar_mezclas(temperaturas_agua, fichero_json)
+    # mejores_resultados = refinar_mezclas(temperaturas_agua, fichero_json)
 
-    pasar_a_json(mejores_resultados, fichero_json_fino)
+    # pasar_a_json(mejores_resultados, fichero_json_fino)
 
-    guardar_txt(fichero_json_fino, fichero_txt, temperaturas_agua)
+    # guardar_txt(fichero_json_fino, fichero_txt, temperaturas_agua)
 
 if __name__ == "__main__":
     main()

@@ -466,12 +466,13 @@ def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
                 resultados_temp_1 = [res for res in resultados_temp_2 if res.puntos["2"].T < 130]
                 resultados_temp_2 = [res for res in resultados_temp_1 if res.pinch > 0]
                 resultados_temp_1 = [res for res in resultados_temp_2 if res.glide[0] < 10 and res.glide[1] < 10]
+                resultados_temp_2 = [res for res in resultados_temp_1 if res.puntos["2"].P < 25] 
                 
                 lista_mejores_resultados = []
                 # Quedarse con el COP más grande
-                if resultados_temp_1 != []:
+                if resultados_temp_2 != []:
 
-                    res_mayor_COP: CicloOutput = max(resultados_temp_1, key=lambda r: r.COP)
+                    res_mayor_COP: CicloOutput = max(resultados_temp_2, key=lambda r: r.COP)
                     
                     resultado_fino[ref_1][ref_2] = res_mayor_COP
                     resultado_fino[ref_2][ref_1] = res_mayor_COP
