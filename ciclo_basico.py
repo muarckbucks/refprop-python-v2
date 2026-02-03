@@ -7,13 +7,36 @@ from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Alignment, Font
 
-# NOTE: Do not instantiate ClienteRefprop at import time. Use `init_refprop()` in
-# the main process and as a per-process initializer for ProcessPoolExecutor so
-# each process creates its own REFPROP handle.
+def calcular_ciclo_basico(
+    fluido: str | list[str],
+    mezcla: list[float],
+    temperaturas_agua: dict[str, list[float]],
+    approach_ini: float = 6.5, # Provar
+    approach_max: float = 20,
+    step: float = 0.5
+) -> CicloOutput:
+
+    approach = approach_ini
+
+    while approach < approach_max:
+        resultado = calcular_ciclo(fluido, mezcla, temperaturas_agua, approach)
+
+        if resultado.error is not None:
+            return resultado
+
+        if resultado.pinch >= 1:
+            return resultado
+
+        approach += step
+
+    return CicloOutput(fluido=resultado.fluido,
+                       mezcla=resultado.mezcla,
+                       temperaturas_agua=temperaturas_agua,
+                       error="PinchBajo")
 
 
-def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
-                   temperaturas_agua: dict[str, list[float]]) -> CicloOutput:
+def calcular_ciclo(fluido: str | list[str], mezcla: list[float],
+                   temperaturas_agua: dict[str, list[float]], approach_k: float) -> CicloOutput:
     
     resultado_basico: dict[str, Any] = {}
 
@@ -24,7 +47,7 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
     [t_hw_in, t_hw_out] = temperaturas_agua["t_hw"]
     [t_cw_in, t_cw_out] = temperaturas_agua["t_cw"]
 
-    ap_k = 5
+    ap_k = approach_k
     ap_0 = 3
 
     SH = 5
@@ -117,8 +140,11 @@ def calcular_ciclo_basico(fluido: str | list[str], mezcla: list[float],
             "caudales_vol": [ratio_v_GlycolHot_R, ratio_v_GlycolCold_R],
             "pinch": pinch,
             "glide": [glide_k, glide_0],
+            "approach_k": ap_k,
             "error": None,
         }
+
+
 
         resultado = resultado_basico | resultados_adicionales
 
@@ -319,7 +345,7 @@ def json_a_excel(fichero_json, fichero_excel):
 
     wb.save(fichero_excel)
 
-def refinar_mezclas(fichero_json, fichero_json_fino):
+def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
 
     with open(fichero_json, "r", encoding="utf-8") as f:
         data_ini: dict[str, dict[str, list[dict[str, Any]]]] = json.load(f)
@@ -440,6 +466,8 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
                 resultados_temp_1 = [res for res in resultados_temp_2 if res.puntos["2"].T < 130]
                 resultados_temp_2 = [res for res in resultados_temp_1 if res.pinch > 0]
                 resultados_temp_1 = [res for res in resultados_temp_2 if res.glide[0] < 10 and res.glide[1] < 10]
+                
+                lista_mejores_resultados = []
                 # Quedarse con el COP más grande
                 if resultados_temp_1 != []:
 
@@ -456,11 +484,33 @@ def refinar_mezclas(fichero_json, fichero_json_fino):
                         print(f"COP {((res_mayor_COP.COP/cop_propano-1)*100):.1f}% más GRANDE que propano\n")
                     else:
                         print(f"COP {(-(res_mayor_COP.COP/cop_propano-1)*100):.1f}% más PEQUEÑO que propano\n")
-
+                    lista_mejores_resultados.append(res_mayor_COP)
 
     # Guardar resultados en json
     with open(fichero_json_fino, "w", encoding = "utf-8") as f:
-        json.dump(serializar(resultado_fino), f, ensure_ascii=False, indent=2)
+        json.dump(serializar(lista_mejores_resultados), f, ensure_ascii=False, indent=2)
+
+    # Guardar resultado en txt
+    string_res: list[str] = []
+
+    for res in lista_mejores_resultados:
+        string_comp = ""
+
+        for fluid, comp in zip(res.fluido, res.mezcla):
+            string_comp += f"{fluid}: {abs((comp*100)):.0f}%, "
+
+        proporcion = (res.COP / cop_propano - 1) * 100
+
+        if proporcion >= 0:
+            string_comp[:-2] += f"\nCOP {proporcion:.2f}% más GRANDE que el propano\n\n"
+        else:
+            string_comp[:-2] += f"\nCOP {-proporcion:.2f}% más PEQUEÑO que el propano\n\n"
+
+        string_res.append(string_comp)
+
+    with open(fichero_txt, "w",encoding="utf-8") as f:
+        f.writelines(string_res)
+
 
 def json_a_excel_fino(
     fichero_json: str,
@@ -579,10 +629,11 @@ def main():
                               "PENTANE", "DME", "ETHANE", "HEXANE", "TOLUENE"]
 
 
-    fichero_json = r"resultados\resultados_ciclo_basico.json"
-    fichero_json_fino = r"resultados\resultados_finos_basico.json"
-    fichero_excel = r"resultados\resultados_ciclo_basico.xlsx"
-    fichero_excel_fino = r"resultados\resultados_finos_basico.xlsx"
+    fichero_json = r"resultados\res_ciclo_basico.json"
+    fichero_json_fino = r"resultados\res_finos_basico.json"
+    fichero_excel = r"resultados\res_ciclo_basico.xlsx"
+    fichero_excel_fino = r"resultados\res_finos_basico.xlsx"
+    fichero_txt = r"resultados\res_finos_basico.txt"
 
     # Llamar a las funciones
     calcular_mezclas(fichero_json, posibles_refrigerantes, temperaturas_agua)
@@ -591,7 +642,7 @@ def main():
 
     refinar_mezclas(fichero_json, fichero_json_fino)
 
-    json_a_excel_fino(fichero_json_fino, fichero_excel_fino)
+    json_a_excel_fino(fichero_json_fino, fichero_excel_fino, fichero_txt)
 
 if __name__ == "__main__":
     main()

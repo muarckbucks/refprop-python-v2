@@ -327,22 +327,23 @@ def guardar_txt(fichero_json_fino: str, fichero_txt: str, temperaturas_agua) -> 
     cop_propano = calcular_valores_referencia(temperaturas_agua)[2]
     
     with open(fichero_json_fino, "r") as f:
-        dic_res: list[CicloOutput] = deserializar(json.load(f))
+        list_res: list[CicloOutput] = deserializar(json.load(f))
     
     string_res: list[str] = []
 
-    for res in dic_res:
+    for res in list_res:
         string_comp = ""
 
         for fluid, comp in zip(res.fluido, res.mezcla):
-            string_comp += f"{fluid}: {(comp*100):.0f}%, "
+            string_comp += f"{fluid}: {abs((comp*100)):.0f}%, "
 
+        string_comp = string_comp[:-2]
         proporcion = (res.COP / cop_propano - 1) * 100
 
         if proporcion >= 0:
-            string_comp += f"COP {proporcion:.2f}% más GRANDE que el propano\n\n"
+            string_comp += f"\nCOP {proporcion:.2f}% más GRANDE que el propano\n\n"
         else:
-            string_comp += f"COP {-proporcion:.2f}% más PEQUEÑO que el propano\n\n"
+            string_comp += f"\nCOP {-proporcion:.2f}% más PEQUEÑO que el propano\n\n"
 
         string_res.append(string_comp)
 
@@ -354,9 +355,9 @@ def main():
     init_refprop()
     # DATOS BÁSICOS
 
-    fichero_json = r"resultados\resultados_ciclo_basico_3_comp.json"
-    fichero_json_fino = r"resultados\resultados_ciclo_basico_3_comp_fino.json"
-    fichero_txt = r"resultados\resultados_ciclo_basico_3_comp_fino.txt"
+    fichero_json = r"resultados\res_ciclo_basico_3_comp.json"
+    fichero_json_fino = r"resultados\res_ciclo_basico_3_comp_fino.json"
+    fichero_txt = r"resultados\res_ciclo_basico_3_comp_fino.txt"
 
     t_hw_in = 47
     t_hw_out = 55
@@ -375,9 +376,9 @@ def main():
     n_prop = 21 # 5% de salto entre proporción y proporción
 
     # Prueba con menos refrigerantes
-    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "PROPYLENE", "PENTANE"]
+    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "DME"]
 
-    n_prop = 21 # 10% de salto
+    n_prop = 21 # 5% de salto
 
     # CÁLCULO BRUTO
     resultados = calcular_resultados(posibles_refrigerantes, temperaturas_agua, n_prop)

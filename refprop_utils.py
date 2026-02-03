@@ -286,7 +286,8 @@ class CicloOutput(Serializable):
                  caudales_vol: list[float] | None = None,
                  pinch: float | None = None,
                  glide: list[float] | None = None,
-                 error: str | None = None):
+                 error: str | None = None,
+                 approach_k: str | None = None) -> None:
         
         self.COP = COP
         self.VCC = VCC
@@ -300,6 +301,7 @@ class CicloOutput(Serializable):
         self.pinch = pinch
         self.glide = glide
         self.error = error
+        self.approach_k = approach_k
 
     def to_dict(self) -> dict[str, Any]:
 
