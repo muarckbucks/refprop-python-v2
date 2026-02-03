@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import ternary
 import os
 import json
@@ -17,12 +18,27 @@ def generar_graficos_ternarios(casos, referencia, carpeta_salida="graficos_terna
         ejes = caso["ejes"]
         valores = caso["valores"]
 
-        v_min = min(valores.values())
-        v_max = max(valores.values())
+        # Valores mínimo y máximo
+        vals = list(valores.values())
+        v_min, v_max = min(vals), max(vals)
 
         # Configuración del gráfico
         fig, tax = ternary.figure(scale=1.0)
         fig.set_size_inches(10, 8)
+
+        # Calculamos cuánto es lo máximo que nos alejamos de la referencia (por arriba o por abajo)
+        delta_max = max(abs(v_max - referencia), abs(v_min - referencia))
+
+        # Si delta es 0 (todos los valores son iguales a la ref), ponemos un mínimo para que no de error
+        if delta_max == 0: delta_max = 0.001
+
+        # Forzamos los límites simétricos
+        sim_vmin = referencia - delta_max
+        sim_vmax = referencia + delta_max
+
+        norm = mcolors.TwoSlopeNorm(vmin=sim_vmin, vcenter=referencia, vmax=sim_vmax)
+
+        cmap = plt.get_cmap("coolwarm")
 
         # Dibujar líneas de la cuadrícula y etiquetas
         tax.boundary(linewidth=2.0)
@@ -35,20 +51,36 @@ def generar_graficos_ternarios(casos, referencia, carpeta_salida="graficos_terna
 
         # Graficar los puntos con lógica de color
         for coords, val in valores.items():
-            # Convertir a tupla si viene como lista para evitar errores
-            c_tupla = tuple(coords)
-            
-            # Lógica de color: Rojo si es mayor a ref, Azul si es menor
-            color = 'red' if val > referencia else 'blue'
-            # Ajustar opacidad según la distancia a la referencia para dar profundidad
-            alpha = min(abs(val - referencia) * 2 + 0.3, 1.0) 
+            color_punto = cmap(norm(val))
+            tax.scatter([tuple(coords)], marker='o', color=color_punto, 
+                        s=150, edgecolors='black', linewidths=0.5, zorder=5)
 
-            tax.scatter([c_tupla], marker='o', color=color, alpha=alpha, s=100)
 
-        # Limpiar ticks y guardar
-        tax.ticks(axis='lbr', linewidth=1, multiple=0.1, tick_formats="%.1f")
-        tax.clear_matplotlib_ticks()
+        # Colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+
+        # Creamos la colorbar
+        cb = fig.colorbar(sm, ax=tax.get_axes(), fraction=0.046, pad=0.08)
+
+        # Generamos 5 puntos: [mínimo, intermedio_bajo, referencia, intermedio_alto, máximo]
+        ticks_deseados = np.linspace(sim_vmin, sim_vmax, 9)
+        cb.set_ticks(ticks_deseados)
+
+        # Generamos las etiquetas dinámicamente
+        etiquetas = []
+        for t in ticks_deseados:
+            if abs(t - referencia) < 1e-7:
+                etiquetas.append(f"{referencia:.3f} (Ref)")
+            else:
+                variacion = ((t / referencia) - 1) * 100
+                signo = "+" if variacion > 0 else ""
+                etiquetas.append(f"{signo}{variacion:.2f}%")
+
+        cb.set_ticklabels(etiquetas)
+        cb.set_label('Variación respecto a Referencia (COP)')
         
+        # Guardar foto
         path_archivo = os.path.join(carpeta_salida, f"{nombre}.png")
         tax.savefig(path_archivo)
         plt.close()

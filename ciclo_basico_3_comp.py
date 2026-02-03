@@ -126,7 +126,7 @@ def filtrar(resultados: list[CicloOutput], vcc_min, vcc_max) -> list[CicloOutput
         lambda r: vcc_min <= r.VCC <= vcc_max,
         lambda r: r.puntos.get("2").T < 130,
         lambda r: r.puntos.get("2").P < 25,
-        lambda r: r.pinch > 0,
+        lambda r: r.pinch > 1,
         lambda r: r.glide[0] < 10 and r.glide[1] < 10,
     ]
 
@@ -386,7 +386,7 @@ def main():
     n_prop = 21 # 5% de salto entre proporción y proporción
 
     # Prueba con menos refrigerantes
-    posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
+    # posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
     n_prop = 21
 
     # P_max = 25
