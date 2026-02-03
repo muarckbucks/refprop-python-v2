@@ -14,7 +14,7 @@ def generar_graficos_ternarios(casos, referencia, carpeta_salida="graficos_terna
         print(f"Carpeta '{carpeta_salida}' creada.")
 
     for caso in casos:
-        nombre = caso["nombre"]
+        nombre: str = caso["nombre"]
         ejes = caso["ejes"]
         valores = caso["valores"]
 
@@ -43,8 +43,16 @@ def generar_graficos_ternarios(casos, referencia, carpeta_salida="graficos_terna
         # Dibujar líneas de la cuadrícula y etiquetas
         tax.boundary(linewidth=2.0)
         tax.gridlines(color="black", multiple=0.1)
+
+        tax.ticks(axis='lbr', multiple=0.1, linewidth=1, offset=0.02, tick_formats="%.1f")
+
+        # Ocultar el marco cuadrado exterior de Matplotlib
+        tax.get_axes().axis('off')
+
+        # Limpiar el fondo
+        tax.clear_matplotlib_ticks()
         
-        tax.set_title(f"Sistema: {nombre}", pad=30)
+        tax.set_title(f"Sistema: {", ".join(nombre.split("_"))}", pad=30)
         tax.left_axis_label(ejes[2], offset=0.14)
         tax.right_axis_label(ejes[1], offset=0.14)
         tax.bottom_axis_label(ejes[0], offset=0.06)
@@ -79,7 +87,7 @@ def generar_graficos_ternarios(casos, referencia, carpeta_salida="graficos_terna
 
         cb.set_ticklabels(etiquetas)
         cb.set_label('Variación respecto a Referencia (COP)')
-        
+
         # Guardar foto
         path_archivo = os.path.join(carpeta_salida, f"{nombre}.png")
         tax.savefig(path_archivo)
