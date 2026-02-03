@@ -7,7 +7,7 @@ import os, subprocess, sys, json
 
 
 # INICIALIZAR CLIENTE
-Cliente = ClienteRefprop(r"C:\Program Files (x86)\REFPROP\REFPRP64.DLL")
+init_refprop()
 
 # DATOS
 # Cargar datos (de la función diagrama_PH)

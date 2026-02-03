@@ -34,7 +34,6 @@ def calcular_ciclo_basico(
                        temperaturas_agua=temperaturas_agua,
                        error="PinchBajo")
 
-
 def calcular_ciclo(fluido: str | list[str], mezcla: list[float],
                    temperaturas_agua: dict[str, list[float]], approach_k: float) -> CicloOutput:
     
@@ -179,7 +178,7 @@ def worker_calcular(args):
     return serializar(res)
 
 def calcular_mezclas(fichero_json: str, posibles_refrigerantes: list[str], temperaturas_agua: dict[str, list[float]]):
-    n_calcs = 21
+    n_calcs = 41
     # Inicializar diccionario de resultados
     resultados: dict[str, dict[str, list[CicloOutput]]] = {}
     for ref_a in posibles_refrigerantes:
@@ -208,11 +207,11 @@ def calcular_mezclas(fichero_json: str, posibles_refrigerantes: list[str], tempe
                 # Comprobar si no ha dado error el cálculo
                 if resultado.error is None:
                     for fluid, comp in zip(resultado.fluido, resultado.mezcla):
-                        string_comp += f"{fluid}: {(comp*100):.0f}%, "
+                        string_comp += f"{fluid}: {(comp*100):.1f}%, "
                     print(string_comp + f"COP = {resultado.COP:.3f}")
                 else:
                     for fluid, comp in zip(resultado.fluido, resultado.mezcla):
-                        string_comp += f"{fluid}: {(comp*100):.0f}%, "
+                        string_comp += f"{fluid}: {(comp*100):.1f}%, "
                     print(string_comp + f"ERROR = {resultado.error}")                    
                 
                 # Graficar resultado
@@ -374,6 +373,7 @@ def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
     cop_propano = calcular_ciclo_basico("PROPANE", [1.0],
                                         temperaturas_agua).COP
 
+    salto = 0.025
 
     for ref_1, sub_data_1 in data.items():
 
@@ -512,7 +512,6 @@ def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
     with open(fichero_txt, "w",encoding="utf-8") as f:
         f.writelines(string_res)
 
-
 def json_a_excel_fino(
     fichero_json: str,
     fichero_excel: str,
@@ -626,8 +625,7 @@ def main():
         "t_cw": [t_cw_in, t_cw_out]
     }
 
-    posibles_refrigerantes = ["PROPANE", "CO2", "BUTANE", "ISOBUTANE", "PROPYLENE",
-                              "PENTANE", "DME", "ETHANE", "HEXANE", "TOLUENE"]
+    posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME", "PENTANE"]
 
 
     fichero_json = r"resultados\res_ciclo_basico.json"
@@ -644,6 +642,8 @@ def main():
     refinar_mezclas(fichero_json, fichero_json_fino)
 
     json_a_excel_fino(fichero_json_fino, fichero_excel_fino, fichero_txt)
+
+
 
 if __name__ == "__main__":
     main()

@@ -382,12 +382,8 @@ def main():
     }
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE",
-                                "PENTANE", "DME", "HEXANE", "TOLUENE"]
+                                "PENTANE", "DME", "TOLUENE"]
     n_prop = 21 # 5% de salto entre proporción y proporción
-
-    # Prueba con menos refrigerantes
-    # posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
-    n_prop = 21
 
     # P_max = 25
     # CÁLCULO BRUTO
