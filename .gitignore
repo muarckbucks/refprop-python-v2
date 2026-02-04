@@ -3,3 +3,6 @@ __pycache__/
 test*.py
 media
 tempCodeRunnerFile.py
+resultados/
+graficos_binarios/
+graficos_ternarios/

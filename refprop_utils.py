@@ -403,18 +403,18 @@ def diagrama_PH(fluido: str | list[str], mezcla: list[float], P_min: float, P_ma
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
 
-def TPoint_a_lista(puntos: list[TPoint]) -> list[list[float]]:
+def TPoint_a_lista(puntos: dict[str, TPoint]) -> list[list[float]]:
     lista: list[dict[str, float]] = []
-    [lista.append([punto.H, punto.P]) for punto in puntos]
+    [lista.append([punto.H, punto.P]) for punto in list(puntos.values())]
     return lista
 
-def puntos_PH(puntos: list[TPoint], base_log: float, margen: float | None = 0.2, play: bool | None = None) -> None:
-    punto1 = puntos[0]
+def puntos_PH(puntos: dict[str, TPoint], base_log: float, margen: float | None = 0.2, play: bool | None = None) -> None:
+    punto1 = puntos["1"]
     fluido = punto1.fluido
     mezcla = punto1.mezcla
     [H_min_punto, H_max_punto, P_min_punto, P_max_punto] = [punto1.H, punto1.H, punto1.P, punto1.P]
 
-    for punto in puntos[1:]:
+    for punto in list(puntos.values())[1:]:
         if punto.H > H_max_punto:
             H_max_punto = punto.H
         elif punto.H < H_min_punto:
@@ -431,8 +431,8 @@ def puntos_PH(puntos: list[TPoint], base_log: float, margen: float | None = 0.2,
     P_max = P_max_punto * factor
     P_min = P_min_punto / factor
 
-    num_puntos_sat = 200
-    num_puntos_temp = 200
+    num_puntos_sat = 60
+    num_puntos_temp = 20
 
     diagrama_PH(fluido, mezcla, P_min, P_max, H_min, H_max, num_puntos_sat, num_puntos_temp, base_log, play, TPoint_a_lista(puntos))
 

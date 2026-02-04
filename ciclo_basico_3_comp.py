@@ -381,8 +381,7 @@ def main():
         "t_cw": [t_cw_in, t_cw_out]
     }
 
-    posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE",
-                                "PENTANE", "DME", "TOLUENE"]
+    posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
     n_prop = 21 # 5% de salto entre proporción y proporción
 
     # P_max = 25

@@ -144,7 +144,7 @@ def generar_curvas_temperatura(fluido: str | list[str], mezcla: list[float], T_m
 
             # Parte bifásica
             curvas_temperatura_bif[temperatura] = [[],[]]
-            entalpias = [float(x) for x in np.linspace(Punto_liq_sat.H, Punto_vap_sat.H, num = num_puntos_temp)]
+            entalpias = [float(x) for x in np.linspace(Punto_liq_sat.H, Punto_vap_sat.H, num = int(1.5*num_puntos_temp))]
             curvas_temperatura_bif[temperatura][0] = entalpias
             presiones = [rprop(fluido, "P", mezcla, H = entalpia, T = temperatura) for entalpia in entalpias]
             presiones_trans: list[float] = log_trans_list(presiones, config_log)
@@ -152,14 +152,14 @@ def generar_curvas_temperatura(fluido: str | list[str], mezcla: list[float], T_m
             
             # Parte vapor
             curvas_temperatura_vap[temperatura] = [[],[]]
-            [presiones, presiones_trans] = log_space(Punto_vap_sat.P*0.999, P_min, num_puntos_temp, config_log)
+            [presiones, presiones_trans] = log_space(Punto_vap_sat.P*0.999, P_min, int(num_puntos_temp*1.5), config_log)
             curvas_temperatura_vap[temperatura][1] = presiones_trans
             curvas_temperatura_vap[temperatura][0] = [rprop(fluido, "H", mezcla, P = presion, T = temperatura) for presion in presiones]
         
         # Si el punto pasa por encima de la campana:
         else:
             curvas_temperatura_tcrit[temperatura] = [[],[]]
-            [presiones, presiones_trans] = log_space(P_min, P_max, num_puntos_temp, config_log)
+            [presiones, presiones_trans] = log_space(P_min, P_max, int(1.5*num_puntos_temp), config_log)
             curvas_temperatura_tcrit[temperatura][1] = presiones_trans
             curvas_temperatura_tcrit[temperatura][0] = [rprop(fluido, "H", mezcla, P = presion, T = temperatura) for presion in presiones]
     

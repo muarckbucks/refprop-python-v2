@@ -625,7 +625,7 @@ def main():
         "t_cw": [t_cw_in, t_cw_out]
     }
 
-    posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME", "PENTANE"]
+    posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
 
 
     fichero_json = r"resultados\res_ciclo_basico.json"
