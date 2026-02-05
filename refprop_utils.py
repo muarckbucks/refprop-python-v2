@@ -4,12 +4,30 @@ from typing import Any
 
 RP = None
 
-# ERRORES
 class ErrorTemperaturaTranscritica(Exception):
     ...
 
 class ErrorPuntoBifasico(Exception):
     ...
+
+WATER_CONFIG = {
+    "baja": {
+        "t_hw": [30, 35],
+        "t_cw": [0, -3],
+    },
+    "intermedia": {
+        "t_hw": [40, 45],
+        "t_cw": [0, -3],
+    },
+    "media": {
+        "t_hw": [47, 55],
+        "t_cw": [0, -3],
+    },
+    "alta": {
+        "t_hw": [55, 65],
+        "t_cw": [0, -3],
+    }
+}
 
 def rprop(fluidos: str | list[str], salida: str | list[str], mezcla: list[float] | None = None, **kwargs: float) -> float | list[float]:
     """
@@ -279,7 +297,6 @@ class CicloOutput(Serializable):
                  VCC: float | None = None,
                  fluido: str | None = None,
                  mezcla: list[float] | None = None,
-                 temperaturas_agua: dict[str, list[float]] | None = None,
                  puntos: dict[str, TPoint] | None = None,
                  puntos_sat: list[TPoint] | None = None,
                  caudales_mas: list[float] | None = None,
@@ -287,13 +304,13 @@ class CicloOutput(Serializable):
                  pinch: float | None = None,
                  glide: list[float] | None = None,
                  error: str | None = None,
-                 approach_k: str | None = None) -> None:
+                 approach_k: str | None = None,
+                 water_config: str | None = None) -> None:
         
         self.COP = COP
         self.VCC = VCC
         self.fluido = fluido
         self.mezcla = mezcla
-        self.temperaturas_agua = temperaturas_agua
         self.puntos = puntos
         self.puntos_sat = puntos_sat
         self.caudales_mas = caudales_mas
@@ -302,6 +319,7 @@ class CicloOutput(Serializable):
         self.glide = glide
         self.error = error
         self.approach_k = approach_k
+        self.water_config = water_config
 
     def to_dict(self) -> dict[str, Any]:
 

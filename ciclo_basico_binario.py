@@ -1,16 +1,16 @@
 from refprop_utils import * 
-from typing import Any, Iterable
-from pprint import pprint
+from typing import Any
 import numpy as np
 import pandas as pd
 from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Alignment, Font
+import matplotlib.pyplot as plt
 
 def calcular_ciclo_basico(
     fluido: str | list[str],
     mezcla: list[float],
-    temperaturas_agua: dict[str, list[float]],
+    water_config: str,
     approach_ini: float = 6.5, # Provar
     approach_max: float = 20,
     step: float = 0.5
@@ -19,7 +19,7 @@ def calcular_ciclo_basico(
     approach = approach_ini
 
     while approach < approach_max:
-        resultado = calcular_ciclo(fluido, mezcla, temperaturas_agua, approach)
+        resultado = calcular_ciclo(fluido, mezcla, water_config, approach)
 
         if resultado.error is not None:
             return resultado
@@ -31,17 +31,50 @@ def calcular_ciclo_basico(
 
     return CicloOutput(fluido=resultado.fluido,
                        mezcla=resultado.mezcla,
-                       temperaturas_agua=temperaturas_agua,
+                       water_config=water_config,
                        error="PinchBajo")
 
+def calcular_valores_referencia(water_config: str) -> list[float]:
+
+    # Calcular VCC de referencia
+    margen_vcc = 0.3
+    vcc_propano = calcular_ciclo_basico("PROPANE", [1.0],
+                                        water_config).VCC
+    vcc_min = (1 - margen_vcc) * vcc_propano
+    vcc_max = (1 + margen_vcc) * vcc_propano
+    # Calcular COP de propano
+    cop_propano = calcular_ciclo_basico("PROPANE", [1.0],
+                                        water_config).COP
+    
+    return [vcc_min, vcc_max, cop_propano]
+
+def filtrar(resultados: list[CicloOutput], vcc_min, vcc_max) -> list[CicloOutput]:
+    filtros = [
+        lambda r: r.error is None,
+        lambda r: vcc_min <= r.VCC <= vcc_max,
+        lambda r: r.puntos.get("2").T < 130,
+        lambda r: r.puntos.get("2").P < 25,
+        lambda r: r.pinch > 1,
+        lambda r: r.glide[0] < 10 and r.glide[1] < 10,
+    ]
+
+    for f in filtros:
+        if not resultados:
+            return []
+        resultados = [r for r in resultados if f(r)]
+
+    return sorted(resultados, key = lambda r: r.COP, reverse=True)
+
 def calcular_ciclo(fluido: str | list[str], mezcla: list[float],
-                   temperaturas_agua: dict[str, list[float]], approach_k: float) -> CicloOutput:
+                   water_config: str, approach_k: float) -> CicloOutput:
     
     resultado_basico: dict[str, Any] = {}
 
     resultado_basico["fluido"] = fluido
     resultado_basico["mezcla"] = mezcla
-    resultado_basico["temperaturas_agua"] = temperaturas_agua
+    resultado_basico["water_config"] = water_config
+
+    temperaturas_agua = WATER_CONFIG[water_config]
 
     [t_hw_in, t_hw_out] = temperaturas_agua["t_hw"]
     [t_cw_in, t_cw_out] = temperaturas_agua["t_cw"]
@@ -177,7 +210,10 @@ def worker_calcular(args):
     res = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua)
     return serializar(res)
 
-def calcular_mezclas(fichero_json: str, posibles_refrigerantes: list[str], temperaturas_agua: dict[str, list[float]]):
+# Cálculo bruto
+def calcular_mezclas(posibles_refrigerantes: list[str], water_config: str):
+    fichero_json = "resultados.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json)
     n_calcs = 41
     # Inicializar diccionario de resultados
     resultados: dict[str, dict[str, list[CicloOutput]]] = {}
@@ -200,7 +236,7 @@ def calcular_mezclas(fichero_json: str, posibles_refrigerantes: list[str], tempe
                 prop_b = 1 - prop_a
                 mezcla = [prop_a, prop_b]
 
-                resultado = calcular_ciclo_basico([ref_a, ref_b], mezcla, temperaturas_agua)
+                resultado = calcular_ciclo_basico([ref_a, ref_b], mezcla, water_config)
                 # Ir imprimiendo resultados
                 string_comp = ""
 
@@ -222,20 +258,27 @@ def calcular_mezclas(fichero_json: str, posibles_refrigerantes: list[str], tempe
                 resultados[ref_b][ref_a][n_calcs - 1 - index_prop] = resultado
  
     # Guardar resultados en json
-    with open(fichero_json, "w", encoding="utf-8") as f:
+    os.makedirs(os.path.dirname(path_json), exist_ok=True)
+    with open(path_json, "w", encoding="utf-8") as f:
         json.dump(serializar(resultados), f, ensure_ascii=False, indent=2)
 
-def json_a_excel(fichero_json, fichero_excel):
+def json_a_excel(water_config: str):
+    fichero_json = "resultados.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json)
+
+    fichero_excel = "resultados.xlsx"
+    path_excel = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_excel)
+
 
     # Cargar json
-    with open(fichero_json, "r", encoding="utf-8") as f:
+    with open(path_json, "r", encoding="utf-8") as f:
         data: dict[str, dict[str, dict[str, dict[str, Any]]]] = json.load(f)
 
     # Crear ExcelWriter
     keys_filtradas = ["COP", "VCC", "error"]
     key_composicion = "mezcla"
 
-    with pd.ExcelWriter(fichero_excel, engine="openpyxl") as writer:
+    with pd.ExcelWriter(path_excel, engine="openpyxl") as writer:
         for hoja, columnas in data.items():
             columnas_expandidas = []
             max_filas = 0
@@ -273,7 +316,7 @@ def json_a_excel(fichero_json, fichero_excel):
             df.to_excel(writer, sheet_name=hoja, index=False)
 
     # Formato con openpyxl hoja por hoja
-    wb = load_workbook(fichero_excel)
+    wb = load_workbook(path_excel)
     for hoja in wb.sheetnames:
         ws = wb[hoja]
 
@@ -342,16 +385,26 @@ def json_a_excel(fichero_json, fichero_excel):
         # Inmovilizar primar fila y columna
         ws.freeze_panes = "B2"
 
-    wb.save(fichero_excel)
+    wb.save(path_excel)
 
-def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
+# Cálculo fino
+def refinar_mezclas(water_config: str):
+    fichero_json = "resultados.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json)
 
-    with open(fichero_json, "r", encoding="utf-8") as f:
+    fichero_json_fino = "resultados_finos.json"
+    path_json_fino = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json_fino)
+    
+    fichero_txt = "resultados_finos.txt"
+    path_txt = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_txt)
+
+
+    with open(path_json, "r", encoding="utf-8") as f:
         data_ini: dict[str, dict[str, list[dict[str, Any]]]] = json.load(f)
 
     data: dict[str, dict[str, list[CicloOutput]]] = deserializar(data_ini)
 
-    temperaturas_agua = list(list(data.values())[0].values())[0][0].temperaturas_agua
+    water_config = list(list(data.values())[0].values())[0][0].water_config
 
     posibles_refrigerantes = list(data.keys())
 
@@ -366,12 +419,12 @@ def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
     # Calcular VCC de referencia
     margen_vcc = 0.3
     vcc_propano = calcular_ciclo_basico("PROPANE", [1.0],
-                                        temperaturas_agua).VCC
+                                        water_config).VCC
     vcc_min = (1 - margen_vcc) * vcc_propano
     vcc_max = (1 + margen_vcc) * vcc_propano
     # Calcular COP de propano
     cop_propano = calcular_ciclo_basico("PROPANE", [1.0],
-                                        temperaturas_agua).COP
+                                        water_config).COP
 
     salto = 0.025
 
@@ -446,7 +499,7 @@ def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
 
                     for comp in range_comp:
                         mezcla = [comp, 1 - comp]
-                        resultado = calcular_ciclo_basico(fluido, mezcla, temperaturas_agua) # BUG calculant el COP hi ha una divisió per 0 ../(PS.H - P1.H)
+                        resultado = calcular_ciclo_basico(fluido, mezcla, water_config) # BUG calculant el COP hi ha una divisió per 0 ../(PS.H - P1.H)
                         resultados.append(resultado)
 
                         string_comp = ""
@@ -485,11 +538,12 @@ def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
                         print(f"COP {((res_mayor_COP.COP/cop_propano-1)*100):.1f}% más GRANDE que propano\n")
                     else:
                         print(f"COP {(-(res_mayor_COP.COP/cop_propano-1)*100):.1f}% más PEQUEÑO que propano\n")
-                    lista_mejores_resultados.append(res_mayor_COP)
+
 
     # Guardar resultados en json
-    with open(fichero_json_fino, "w", encoding = "utf-8") as f:
-        json.dump(serializar(lista_mejores_resultados), f, ensure_ascii=False, indent=2)
+    os.makedirs(os.path.dirname(path_json_fino), exist_ok=True)
+    with open(path_json_fino, "w", encoding = "utf-8") as f:
+        json.dump(serializar(resultado_fino), f, ensure_ascii=False, indent=2)
 
     # Guardar resultado en txt
     string_res: list[str] = []
@@ -500,30 +554,37 @@ def refinar_mezclas(fichero_json, fichero_json_fino, fichero_txt):
         for fluid, comp in zip(res.fluido, res.mezcla):
             string_comp += f"{fluid}: {abs((comp*100)):.0f}%, "
 
+        string_comp = string_comp[:-2]
+
         proporcion = (res.COP / cop_propano - 1) * 100
 
         if proporcion >= 0:
-            string_comp[:-2] += f"\nCOP {proporcion:.2f}% más GRANDE que el propano\n\n"
+            string_comp += f"\nCOP {proporcion:.2f}% más GRANDE que el propano\n\n"
         else:
-            string_comp[:-2] += f"\nCOP {-proporcion:.2f}% más PEQUEÑO que el propano\n\n"
+            string_comp += f"\nCOP {-proporcion:.2f}% más PEQUEÑO que el propano\n\n"
 
         string_res.append(string_comp)
 
-    with open(fichero_txt, "w",encoding="utf-8") as f:
+    with open(path_txt, "w",encoding="utf-8") as f:
         f.writelines(string_res)
 
 def json_a_excel_fino(
-    fichero_json: str,
-    fichero_excel: str,
+    water_config: str,
     ancho_col_key: float = 20,
     ancho_col_value: float = 30,
     ancho_col_separador: float = 5,
 ) -> None:
 
-    keys_filtradas = ["COP", "VCC", "pinch", "glide"]
+    fichero_json_fino = "resultados_finos.json"
+    path_json_fino = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json_fino)
 
-    with open(fichero_json, "r", encoding="utf-8") as f:
+    fichero_excel_fino = "resultados_finos.xlsx"
+    path_excel_fino = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_excel_fino)
+
+    with open(path_json_fino, "r", encoding="utf-8") as f:
         data: dict[str, dict[str, dict[str, Any]]] = json.load(f)
+
+    keys_filtradas = ["COP", "VCC", "pinch", "glide"]
 
     wb = Workbook()
     ws = wb.active
@@ -607,41 +668,141 @@ def json_a_excel_fino(
 
     ws.freeze_panes = "A2"
 
-    wb.save(fichero_excel)
+    wb.save(path_excel_fino)
 
+# Generar gráficos
+def generar_graficos_binarios(casos, valor_referencia, water_config):
+    output_folder = os.path.join("resultados_ciclo_basico", water_config, "binarias", "graficos")
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    for caso in casos:
+        nombre = caso["nombre"]
+        ejes = caso["ejes"]
+        datos = caso["valores"]
+
+        # 1. Extraer y ordenar datos
+        sorted_keys = sorted(datos.keys())
+        x_values = [k[0] for k in sorted_keys]
+        
+        # 2. Calcular la desviación porcentual respecto a la referencia
+        # Formula: ((valor - ref) / ref) * 100
+        y_percent = [((datos[k] - valor_referencia) / valor_referencia) * 100 for k in sorted_keys]
+
+        plt.figure(figsize=(10, 6))
+        
+        # 3. Dibujar puntos SIN unir (scatter)
+        plt.scatter(x_values, y_percent, color='b', label=f'Desviación {nombre}')
+        
+        # 4. Línea de referencia en el 0%
+        plt.axhline(y=0, color='r', linestyle='--', label=f'Referencia ({valor_referencia:.3f})')
+
+        # 5. Configurar ticks de los ejes
+        # Eje X en porcentajes
+        plt.xticks([i/10 for i in range(11)], [f'{i*10}%' for i in range(11)])
+        
+        # Eje Y con sufijo %
+        current_values = plt.gca().get_yticks()
+        plt.gca().set_yticklabels([f'{int(x)}%' for x in current_values])
+
+        plt.title(f'Desviación porcentual respecto a referencia: {nombre}', fontsize=12)
+        plt.xlabel(f'Composición de {ejes[0]}')
+        plt.ylabel('Diferencia de COP respecto a referencia (%)')
+        plt.grid(True, linestyle=':', alpha=0.6)
+        plt.legend()
+        plt.xlim(0, 1)
+
+        plt.savefig(os.path.join(output_folder, f"{nombre}.png"))
+        plt.close()
+
+def ciclo_basico_filtrado(water_config: str) -> None:
+    fichero_json = "resultados.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json)
+
+    fichero_json_filtrado = "resultados_filtrados.json"
+    path_json_filtrado = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json_filtrado)
+
+    with open(path_json, "r", encoding="utf-8") as f:
+        dic_res = json.load(f)
+
+    dic_res: dict[str, dict[str, list[CicloOutput]]] = deserializar(dic_res)
+
+    water_config = list(list(dic_res.values())[0].values())[0][0].water_config
+    [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(water_config)
+
+    dic_temp: dict[str, dict[str, list[CicloOutput]]] = {}
+    for ref_a, sub_dict in dic_res.items():
+        for ref_b, lista_res in sub_dict.items():
+            dic_temp.setdefault(ref_a, {})[ref_b] = filtrar(lista_res, vcc_min, vcc_max)
+
+    dic_res = serializar(dic_temp)
+
+    with open(path_json_filtrado, "w", encoding="utf-8") as f:
+        json.dump(dic_res, f, ensure_ascii=False, indent=4)
+
+def crear_casos(water_config: str) -> tuple[list[dict[str, Any]], float]:
+    
+    fichero_json_filtrado = "resultados_filtrados.json"
+    path_json_filtrado = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json_filtrado)
+
+    with open(path_json_filtrado, "r", encoding="utf-8") as f:
+        dic_res = json.load(f)
+
+    dic_res: dict[str, dict[str, list[CicloOutput]]] = deserializar(dic_res)
+
+    posibles_refrigerantes = list(dic_res.keys())
+
+    water_config = list(list(dic_res.values())[0].values())[0][0].water_config
+
+    [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(water_config)
+
+    casos: list[dict[str, Any]] = []
+
+    for index_a, ref_a in enumerate(posibles_refrigerantes[:-1]):
+        for ref_b in posibles_refrigerantes[index_a + 1:]:
+            if dic_res.get(ref_a, {}).get(ref_b):
+                lista_resultados = dic_res[ref_a][ref_b]
+                fluidos = lista_resultados[0].fluido
+                ejes = fluidos
+                nombre = (", ").join(fluidos)
+                valores = {
+                    tuple(res.mezcla): res.COP
+                    for res in lista_resultados
+                }
+                casos.append({
+                    "nombre": nombre,
+                    "ejes": ejes,
+                    "valores": valores,
+                })
+
+    return (casos, cop_propano)
 
 
 def main():
     init_refprop()
-    # DATOS BÁSICOS
-    t_hw_in = 47
-    t_hw_out = 55
-
-    t_cw_in = 0
-    t_cw_out = -3
-
-    temperaturas_agua = {
-        "t_hw": [t_hw_in, t_hw_out],
-        "t_cw": [t_cw_in, t_cw_out]
-    }
+    
+    # DATOS
+    water_config = "media" # "baja" / "media" / "intermedia" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
 
 
-    fichero_json = r"resultados\res_ciclo_basico.json"
-    fichero_json_fino = r"resultados\res_finos_basico.json"
-    fichero_excel = r"resultados\res_ciclo_basico.xlsx"
-    fichero_excel_fino = r"resultados\res_finos_basico.xlsx"
-    fichero_txt = r"resultados\res_finos_basico.txt"
+    # CÁLCULO BRUTO
+    calcular_mezclas(posibles_refrigerantes, water_config)
 
-    # Llamar a las funciones
-    calcular_mezclas(fichero_json, posibles_refrigerantes, temperaturas_agua)
+    json_a_excel(water_config)
 
-    json_a_excel(fichero_json, fichero_excel)
+    # CÁLCULO FINO
+    refinar_mezclas(water_config)
 
-    refinar_mezclas(fichero_json, fichero_json_fino)
+    json_a_excel_fino(water_config)
 
-    json_a_excel_fino(fichero_json_fino, fichero_excel_fino, fichero_txt)
+    # CREAR GRÁFICOS BINARIOS
+    ciclo_basico_filtrado(water_config)
+
+    (casos, cop_propano) = crear_casos(water_config)
+
+    generar_graficos_binarios(casos, cop_propano, water_config)
 
 
 

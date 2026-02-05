@@ -1,8 +1,7 @@
 __pycache__/
 *.pyc
 test*.py
-media
+media/
 tempCodeRunnerFile.py
-resultados/
-graficos_binarios/
-graficos_ternarios/
+resultados*/
+to_do.txt

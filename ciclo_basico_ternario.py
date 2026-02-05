@@ -1,5 +1,8 @@
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import ternary
 from refprop_utils import *
-from ciclo_basico import calcular_ciclo_basico, worker_calcular
+from ciclo_basico_binario import calcular_ciclo_basico, worker_calcular
 import numpy as np
 import json, os
 from concurrent.futures import ProcessPoolExecutor
@@ -50,14 +53,15 @@ def mostrar_resultado(res: CicloOutput, decimales: int | None = 0) -> None:
             string_comp += f"{fluid}: {(comp*100):.{decimales}f}%, "
         print(string_comp + f"ERROR = {res.error}")
     
-def calcular_resultados(posibles_refrigerantes: list[str], temperaturas_agua: dict[str, list[float]], n_prop: int) -> list[CicloOutput]:
+def calcular_resultados(posibles_refrigerantes: list[str], water_config: str, n_prop: int) -> list[CicloOutput]:
     combinaciones_ref = crear_lista_3_ref(posibles_refrigerantes)
-    rango_proporciones = crear_props_3_ref(n_prop) # 21 para que los saltos sean del 5%
+    rango_proporciones = crear_props_3_ref(n_prop)
 
     resultados: list[CicloOutput] = []
-    # Crear lista de inputs (cada input es: [fluido, mezcla, temperaturas_agua])
+
+    # Crear lista de inputs (cada input es: [fluido, mezcla, water_config])
     lista_inputs: tuple[list[str], list[float], dict[str, list[float]]] = [
-        (comb_ref, prop, temperaturas_agua)
+        (comb_ref, prop, water_config)
         for comb_ref in combinaciones_ref
         for prop in rango_proporciones
     ]
@@ -85,13 +89,25 @@ def pasar_a_diccionario(resultados: list[CicloOutput]) -> dict[str, dict[str, di
     
     return dic_resultados
 
-def pasar_a_json(dic_resultados: Any, fichero_json: str) -> None:
-    with open(fichero_json, "w", encoding="utf-8") as f:
+def pasar_a_json(dic_resultados: Any, water_config: str) -> None:
+    fichero_json = "resultados.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "ternarias", fichero_json)
+
+    os.makedirs(os.path.dirname(path_json), exist_ok=True)
+    with open(path_json, "w", encoding="utf-8") as f:
         json.dump(serializar(dic_resultados), f, ensure_ascii=False, indent=2)
 
-def filtrar_diccionario(dic_resultados, temperaturas_agua: dict[str, list[float]], posibles_refrigerantes: list[str]):
+def pasar_a_json_filtrado(dic_resultados: Any, water_config: str) -> None:
+    fichero_json = "resultados_filtrados.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "ternarias", fichero_json)
 
-    [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(temperaturas_agua)
+    os.makedirs(os.path.dirname(path_json), exist_ok=True)
+    with open(path_json, "w", encoding="utf-8") as f:
+        json.dump(serializar(dic_resultados), f, ensure_ascii=False, indent=2)    
+
+def filtrar_diccionario(dic_resultados, water_config: str, posibles_refrigerantes: list[str]):
+
+    [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(water_config)
     
     for [ref_a, ref_b, ref_c] in crear_lista_3_ref(posibles_refrigerantes):
         dic_resultados[ref_a][ref_b][ref_c] = filtrar(dic_resultados[ref_a][ref_b][ref_c], vcc_min, vcc_max)
@@ -100,8 +116,11 @@ def filtrar_diccionario(dic_resultados, temperaturas_agua: dict[str, list[float]
 
 # Cálculo fino
 
-def cargar_json(fichero_json: str) -> dict[str, dict[str, dict[str, list[CicloOutput]]]]:
-    with open(fichero_json, "r", encoding="utf-8") as f:
+def cargar_json(water_config: str) -> dict[str, dict[str, dict[str, list[CicloOutput]]]]:
+    fichero_json = "resultados.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "ternarias", fichero_json)
+    
+    with open(path_json, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     return deserializar(data)
@@ -137,17 +156,17 @@ def filtrar(resultados: list[CicloOutput], vcc_min, vcc_max) -> list[CicloOutput
 
     return sorted(resultados, key = lambda r: r.COP, reverse=True) # Si no hay ninguno devolverá []
 
-def calcular_valores_referencia(temperaturas_agua: dict[str, list[float]]) -> list[float]:
+def calcular_valores_referencia(water_config: str) -> list[float]:
 
     # Calcular VCC de referencia
     margen_vcc = 0.3
     vcc_propano = calcular_ciclo_basico("PROPANE", [1.0],
-                                        temperaturas_agua).VCC
+                                        water_config).VCC
     vcc_min = (1 - margen_vcc) * vcc_propano
     vcc_max = (1 + margen_vcc) * vcc_propano
     # Calcular COP de propano
     cop_propano = calcular_ciclo_basico("PROPANE", [1.0],
-                                        temperaturas_agua).COP
+                                        water_config).COP
     
     return [vcc_min, vcc_max, cop_propano]
 
@@ -255,12 +274,12 @@ def mostrar_mejor_resultado(res: CicloOutput, cop_propano: float) -> None:
     else:
         print("\n" + string_comp + f"COP {-proporcion:.2f}% más PEQUEÑO que el propano\n")
     
-def refinar_mezclas(temperaturas_agua: dict[str, list[float]], fichero_json: str) -> list[CicloOutput]:
+def refinar_mezclas(water_config: str) -> list[CicloOutput]:
 
-    [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(temperaturas_agua)
+    [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(water_config)
 
     # Cargar fichero con resultados de cálculo bruto
-    dic_resultados = cargar_json(fichero_json)
+    dic_resultados = cargar_json(water_config)
 
     # Extraer los refrigerantes en el órden que se han calculado
     posibles_refrigerantes = recorrer_refrigerantes(dic_resultados)
@@ -291,7 +310,7 @@ def refinar_mezclas(temperaturas_agua: dict[str, list[float]], fichero_json: str
     for comb_ref, comps in zip(lista_refrigerantes, total_comps):
         for coords in comps:
             for coord in coords:
-                lista_inputs.append((comb_ref, coord, temperaturas_agua))
+                lista_inputs.append((comb_ref, coord, water_config))
 
     print("\n### CÁLCULO FINO ###")
 
@@ -333,10 +352,16 @@ def pasar_a_diccionario_fino(resultados: list[CicloOutput]) -> dict[str, dict[st
 
     return dic_resultados
 
-def guardar_txt(fichero_json_fino: str, fichero_txt: str, temperaturas_agua) -> None:
-    cop_propano = calcular_valores_referencia(temperaturas_agua)[2]
+def guardar_txt(water_config: str) -> None:
+    fichero_json_fino = "resultados_finos.json"
+    path_json_fino = os.path.join("resultados_ciclo_basico", water_config, "ternarias", fichero_json_fino)
     
-    with open(fichero_json_fino, "r") as f:
+    fichero_txt = "resultados_finos.txt"
+    path_txt = os.path.join("resultados_ciclo_basico", water_config, "ternarias", fichero_txt)
+
+    cop_propano = calcular_valores_referencia(water_config)[2]
+
+    with open(path_json_fino, "r") as f:
         list_res: list[CicloOutput] = deserializar(json.load(f))
     
     string_res: list[str] = []
@@ -357,52 +382,181 @@ def guardar_txt(fichero_json_fino: str, fichero_txt: str, temperaturas_agua) -> 
 
         string_res.append(string_comp)
 
-    with open(fichero_txt, "w",encoding="utf-8") as f:
+    with open(path_txt, "w",encoding="utf-8") as f:
         f.writelines(string_res)
 
+def pasar_a_json_fino(dic_resultados: Any, water_config: str) -> None:
+    fichero_json = "resultados_finos.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "ternarias", fichero_json)
+
+    os.makedirs(os.path.dirname(path_json), exist_ok=True)
+    with open(path_json, "w", encoding="utf-8") as f:
+        json.dump(serializar(dic_resultados), f, ensure_ascii=False, indent=2)
+
+# Generar gráficos
+def generar_graficos_ternarios(casos, referencia, water_config) -> None:
+    # Crear la carpeta si no existe
+    carpeta_salida = os.path.join("resultados_ciclo_basico", water_config, "ternarias", "graficos")
+    if not os.path.exists(carpeta_salida):
+        os.makedirs(carpeta_salida)
+        print(f"Carpeta '{carpeta_salida}' creada.")
+
+    for caso in casos:
+        nombre: str = caso["nombre"]
+        ejes = caso["ejes"]
+        valores = caso["valores"]
+
+        # Valores mínimo y máximo
+        vals = list(valores.values())
+        v_min, v_max = min(vals), max(vals)
+
+        # Configuración del gráfico
+        fig, tax = ternary.figure(scale=1.0)
+        fig.set_size_inches(10, 8)
+
+        # Calculamos cuánto es lo máximo que nos alejamos de la referencia (por arriba o por abajo)
+        delta_max = max(abs(v_max - referencia), abs(v_min - referencia))
+
+        # Si delta es 0 (todos los valores son iguales a la ref), ponemos un mínimo para que no de error
+        if delta_max == 0: delta_max = 0.001
+
+        # Forzamos los límites simétricos
+        sim_vmin = referencia - delta_max
+        sim_vmax = referencia + delta_max
+
+        norm = mcolors.TwoSlopeNorm(vmin=sim_vmin, vcenter=referencia, vmax=sim_vmax)
+
+        cmap = plt.get_cmap("coolwarm")
+
+        # Dibujar líneas de la cuadrícula y etiquetas
+        tax.boundary(linewidth=2.0)
+        tax.gridlines(color="black", multiple=0.1)
+
+        tax.ticks(axis='lbr', multiple=0.1, linewidth=1, offset=0.02, tick_formats="%.1f")
+
+        # Ocultar el marco cuadrado exterior de Matplotlib
+        tax.get_axes().axis('off')
+
+        # Limpiar el fondo
+        tax.clear_matplotlib_ticks()
+        
+        tax.set_title(f"Sistema: {", ".join(nombre.split("_"))}", pad=30)
+        tax.left_axis_label(ejes[2], offset=0.14)
+        tax.right_axis_label(ejes[1], offset=0.14)
+        tax.bottom_axis_label(ejes[0], offset=0.06)
+
+        # Graficar los puntos con lógica de color
+        for coords, val in valores.items():
+            color_punto = cmap(norm(val))
+            tax.scatter([tuple(coords)], marker='o', color=color_punto, 
+                        s=150, edgecolors='black', linewidths=0.5, zorder=5)
+
+
+        # Colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+
+        # Creamos la colorbar
+        cb = fig.colorbar(sm, ax=tax.get_axes(), fraction=0.046, pad=0.08)
+
+        # Generamos 5 puntos: [mínimo, intermedio_bajo, referencia, intermedio_alto, máximo]
+        ticks_deseados = np.linspace(sim_vmin, sim_vmax, 9)
+        cb.set_ticks(ticks_deseados)
+
+        # Generamos las etiquetas dinámicamente
+        etiquetas = []
+        for t in ticks_deseados:
+            if abs(t - referencia) < 1e-7:
+                etiquetas.append(f"{referencia:.3f} (Ref)")
+            else:
+                variacion = ((t / referencia) - 1) * 100
+                signo = "+" if variacion > 0 else ""
+                etiquetas.append(f"{signo}{variacion:.2f}%")
+
+        cb.set_ticklabels(etiquetas)
+        cb.set_label('Variación respecto a Referencia (COP)')
+
+        # Guardar foto
+        path_archivo = os.path.join(carpeta_salida, f"{nombre}.png")
+        tax.savefig(path_archivo)
+        plt.close()
+        print(f"Guardado: {path_archivo}")
+
+def obtener_datos(water_config) -> tuple[list[dict[str, Any]], float]:
+    
+    fichero_json = "resultados_filtrados.json"
+    path_json_filtrado = os.path.join("resultados_ciclo_basico", water_config, "ternarias", fichero_json)
+    
+    with open(path_json_filtrado, "r", encoding="utf-8") as f:
+        dic_datos = json.load(f)
+
+    dic_datos: dict[str, dict[str, dict[str, list[CicloOutput]]]] = deserializar(dic_datos)
+
+    water_config = list(list(list(dic_datos.values())[0].values())[0].values())[0][0].water_config
+
+    cop_propano = calcular_ciclo_basico("PROPANE", [1.0], water_config).COP
+
+    posibles_refrigerantes = recorrer_refrigerantes(dic_datos)
+
+    lista_refrigerantes = crear_lista_3_ref(posibles_refrigerantes)
+
+    datos_caso: list[dict[str, Any]] = []
+
+    for comb_ref in lista_refrigerantes:
+
+        [ref_a, ref_b, ref_c] = comb_ref
+
+        if dic_datos.get(ref_a, {}).get(ref_b, {}).get(ref_c):
+
+            nombre = "_".join(comb_ref)
+            ejes = comb_ref
+            valores = {
+                tuple(res.mezcla): res.COP
+                for res in dic_datos[ref_a][ref_b][ref_c]
+            }
+
+        datos_caso.append({
+            "nombre": nombre,
+            "ejes": ejes,
+            "valores": valores,
+        })
+
+    return (datos_caso, cop_propano)
 
 def main():
     init_refprop()
-    # DATOS BÁSICOS
-
-    fichero_json = r"resultados\res_ciclo_basico_3_comp.json"
-    fichero_json_filtrado = r"resultados\res_ciclo_basico_3_comp_filtrado.json"
-    fichero_json_fino = r"resultados\res_ciclo_basico_3_comp_fino.json"
-    fichero_txt = r"resultados\res_ciclo_basico_3_comp_fino.txt"
-
-    t_hw_in = 47
-    t_hw_out = 55
-
-    t_cw_in = 0
-    t_cw_out = -3
-
-    temperaturas_agua = {
-        "t_hw": [t_hw_in, t_hw_out],
-        "t_cw": [t_cw_in, t_cw_out]
-    }
+    
+    # DATOS
+    water_config = "media"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
+    posibles_refrigerantes = ["PROPANE", "BUTANE", "DME"]
     n_prop = 21 # 5% de salto entre proporción y proporción
 
-    # P_max = 25
     # CÁLCULO BRUTO
-    resultados = calcular_resultados(posibles_refrigerantes, temperaturas_agua, n_prop)
+    resultados = calcular_resultados(posibles_refrigerantes, water_config, n_prop)
 
     dic_resultados = pasar_a_diccionario(resultados)
 
-    pasar_a_json(dic_resultados, fichero_json)
+    pasar_a_json(dic_resultados, water_config)
 
-    dic_filtrado = filtrar_diccionario(dic_resultados, temperaturas_agua,
+    dic_filtrado = filtrar_diccionario(dic_resultados, water_config,
                                                 posibles_refrigerantes)
     
-    pasar_a_json(dic_filtrado, fichero_json_filtrado)
+    pasar_a_json_filtrado(dic_filtrado, water_config)
 
     # CÁLCULO FINO
-    # mejores_resultados = refinar_mezclas(temperaturas_agua, fichero_json)
+    mejores_resultados = refinar_mezclas(water_config)
 
-    # pasar_a_json(mejores_resultados, fichero_json_fino)
+    pasar_a_json_fino(mejores_resultados, water_config)
 
-    # guardar_txt(fichero_json_fino, fichero_txt, temperaturas_agua)
+    guardar_txt(water_config)
+
+    # CREAR GRÁFICOS TERNARIOS
+    (datos_casos, cop_propano) = obtener_datos(water_config)
+
+    generar_graficos_ternarios(datos_casos, cop_propano, water_config)
+
 
 if __name__ == "__main__":
     main()
