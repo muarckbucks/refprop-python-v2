@@ -227,32 +227,36 @@ def calcular_mezclas(posibles_refrigerantes: list[str], water_config: str):
                 [resultados[ref_a][ref_b].append(0) for _ in range(n_calcs)]
 
     # Calcular mezclas de refrigerantes
-    
     print("### CÁLCULO BRUTO ###")
-    for index_a, ref_a in tqdm(list(enumerate(posibles_refrigerantes[:-1])),
-                               total = len(posibles_refrigerantes) - 1):
+    n = len(posibles_refrigerantes)
+    total = n * (n - 1) // 2
 
-        for ref_b in posibles_refrigerantes[index_a + 1:]:
+    with tqdm(total = total) as pbar:
+        for index_a, ref_a in enumerate(posibles_refrigerantes[:-1]):
 
-            props_a = list(np.linspace(0, 1, n_calcs))
-            props_a = [float(x) for x in props_a]
-            
-            mezclas: list[list[float]] = [[prop_a, 1 - prop_a] for prop_a in props_a]
-            lista_inputs: list[tuple[list[float], list[float], str]] = [
-                ([ref_a, ref_b], mezcla, water_config)
-                for mezcla in mezclas
-                ]
+            for ref_b in posibles_refrigerantes[index_a + 1:]:
 
-            cpu = os.cpu_count() // 2 or 1 # Usar la mitad de núcleos de la CPU
-            chunksize = 2 # Está bien para la duración de la función (aprox 1s)
+                props_a = list(np.linspace(0, 1, n_calcs))
+                props_a = [float(x) for x in props_a]
+                
+                mezclas: list[list[float]] = [[prop_a, 1 - prop_a] for prop_a in props_a]
+                lista_inputs: list[tuple[list[float], list[float], str]] = [
+                    ([ref_a, ref_b], mezcla, water_config)
+                    for mezcla in mezclas
+                    ]
 
-            with ProcessPoolExecutor(max_workers=cpu, initializer=init_refprop) as ex:
-                res = list(ex.map(worker_calcular, lista_inputs, chunksize=chunksize)) # Devuelve ya serializado
-            res: list[CicloOutput] = deserializar(res)
-            for index, resultado in enumerate(res):
+                cpu = os.cpu_count() // 2 or 1 # Usar la mitad de núcleos de la CPU
+                chunksize = 2 # Está bien para la duración de la función (aprox 1s)
 
-                resultados[ref_a][ref_b][index] = resultado
-                resultados[ref_b][ref_a][n_calcs - 1 - index] = resultado
+                with ProcessPoolExecutor(max_workers=cpu, initializer=init_refprop) as ex:
+                    res = list(ex.map(worker_calcular, lista_inputs, chunksize=chunksize)) # Devuelve ya serializado
+                res: list[CicloOutput] = deserializar(res)
+                for index, resultado in enumerate(res):
+
+                    resultados[ref_a][ref_b][index] = resultado
+                    resultados[ref_b][ref_a][n_calcs - 1 - index] = resultado
+                
+                pbar.update(1)
 
  
     # Guardar resultados en json
@@ -454,6 +458,7 @@ def refinar_mezclas(water_config: str):
                 lista_resultados = sorted(lista, key = lambda resultado: resultado.COP, reverse = True)[:2]
 
                 comps = []
+                salto = 0.025
                 # Comprobar cuántos resultados dan COP correcto
                 if len(lista_resultados) == 2: # Si hay 2 elementos coger los que tienen más COP
                     
@@ -465,19 +470,19 @@ def refinar_mezclas(water_config: str):
                         comps.append([comp_1, comp_2])
                     
                     else:
-                        # Crear composiciones de +-5% alrededor de cada punto
-                        comp_1 = [max(lista_resultados[0].mezcla[0] - 0.05, 0), 1 - max(lista_resultados[0].mezcla[0] - 0.05, 0)]
-                        comp_2 = [min(lista_resultados[0].mezcla[0] + 0.05, 1), 1 - min(lista_resultados[0].mezcla[0] + 0.05, 1)]
-                        comp_3 = [max(lista_resultados[1].mezcla[0] - 0.05, 0), 1 - max(lista_resultados[1].mezcla[0] - 0.05, 0)]
-                        comp_4 = [min(lista_resultados[1].mezcla[0] + 0.05, 1), 1 - min(lista_resultados[1].mezcla[0] + 0.05, 1)]
+                        # Crear composiciones de +-salto alrededor de cada punto
+                        comp_1 = [max(lista_resultados[0].mezcla[0] - salto, 0), 1 - max(lista_resultados[0].mezcla[0] - salto, 0)]
+                        comp_2 = [min(lista_resultados[0].mezcla[0] + salto, 1), 1 - min(lista_resultados[0].mezcla[0] + salto, 1)]
+                        comp_3 = [max(lista_resultados[1].mezcla[0] - salto, 0), 1 - max(lista_resultados[1].mezcla[0] - salto, 0)]
+                        comp_4 = [min(lista_resultados[1].mezcla[0] + salto, 1), 1 - min(lista_resultados[1].mezcla[0] + salto, 1)]
                         
                         comps.append([comp_1, comp_2])
                         comps.append([comp_3, comp_4])
 
                 elif len(lista_resultados) == 1:
                     # Si solo hay un elemento ir desde +- 5% composición
-                    comp_1 = [max(lista_resultados[0].mezcla[0] - 0.05, 0), 1 - max(lista_resultados[0].mezcla[0] - 0.05, 0)]
-                    comp_2 = [min(lista_resultados[0].mezcla[0] + 0.05, 1), 1 - min(lista_resultados[0].mezcla[0] + 0.05, 1)]
+                    comp_1 = [max(lista_resultados[0].mezcla[0] - salto, 0), 1 - max(lista_resultados[0].mezcla[0] - salto, 0)]
+                    comp_2 = [min(lista_resultados[0].mezcla[0] + salto, 1), 1 - min(lista_resultados[0].mezcla[0] + salto, 1)]
                     comps.append([comp_1, comp_2])
 
                 else: # len(lista_resultados) == 0
@@ -534,8 +539,10 @@ def refinar_mezclas(water_config: str):
                     print("\nProporción VÁLIDA con más COP: " + string_comp + f"COP = {res_mayor_COP.COP:.3f}")
                     if res_mayor_COP.COP > cop_propano:
                         print(f"COP {((res_mayor_COP.COP/cop_propano-1)*100):.1f}% más GRANDE que propano\n")
-                    else:
+                    elif res_mayor_COP.COP < cop_propano:
                         print(f"COP {(-(res_mayor_COP.COP/cop_propano-1)*100):.1f}% más PEQUEÑO que propano\n")
+                    else: 
+                        print(f"COP igual al Propano: {res_mayor_COP.COP:.3f}")
 
 
     # Guardar resultados en json
@@ -780,7 +787,7 @@ def main():
     init_refprop()
     
     # DATOS
-    water_config = "media" # "baja" / "intermedia" / "media" / "alta"
+    water_config = "baja" # "baja" / "intermedia" / "media" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
 
