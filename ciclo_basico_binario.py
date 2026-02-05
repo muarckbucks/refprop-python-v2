@@ -8,6 +8,7 @@ from openpyxl.styles import Alignment, Font
 import matplotlib.pyplot as plt
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
+from pprint import pprint
 
 def calcular_ciclo_basico(
     fluido: str | list[str],
@@ -870,12 +871,96 @@ def crear_casos(water_config: str) -> tuple[list[dict[str, Any]], float]:
 
     return (casos, cop_propano)
 
+init_refprop()
+water_config = "media"
+
+# Resumen
+
+fichero_json = "resultados.json"
+path_json = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json)
+
+fichero_excel_resumen = "resumen_resultados.xlsx"
+path_excel_resumen = os.path.join("resultados_ciclo_basico", water_config, "binaria", fichero_excel_resumen)
+
+with open(path_json, "r", encoding="utf-8") as f:
+    dic_res = json.load(f)
+
+dic_res: dict[str, dict[str, list[CicloOutput]]] = deserializar(dic_res)
+
+[vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(water_config)
+
+# Quitar valores que tengan COP menor a COP_propano
+dic_temp: dict[str, dict[str, list[CicloOutput]]] = {}
+for ref_a, sub_dict in dic_res.items():
+    for ref_b, lista_res in sub_dict.items():
+        dic_temp.setdefault(ref_a, {})[ref_b] = filtrar(lista_res, vcc_min, vcc_max)
+        if dic_temp[ref_a][ref_b]:
+            dic_temp[ref_a][ref_b] = [
+                res for res in dic_temp[ref_a][ref_b] if res.COP >= cop_propano
+            ]
+
+dic_res = dic_temp
+del dic_temp
+
+posibles_refrigerantes = list(dic_res.keys())
+
+lista_mejores_res: list[list[CicloOutput]] = []
+
+for index_a, ref_a in enumerate(posibles_refrigerantes[:-1]):
+
+    for ref_b in posibles_refrigerantes[index_a + 1:]:
+
+        lista_mejores_res.append(dic_res.get(ref_a, {}).get(ref_b, [])) if dic_res.get(ref_a, {}).get(ref_b, []) else ...
+
+# Quitar listas vacías
+lista_mejores_res = [sub for sub in lista_mejores_res if sub]
+
+# Ordenar por COP
+lista_mejores_res.sort(key = lambda list_res: max(res.COP for res in list_res), reverse=True)
+
+pprint(lista_mejores_res)
+
+datos_resumen: list[dict[str, Any]] = []
+
+for list_res in lista_mejores_res:
+    mezcla = [list_res[0].mezcla, list_res[-1].mezcla]
+    valores_cop = [res.COP for res in list_res]
+    cop = [valores_cop[0], valores_cop[-1], max(valores_cop), min(valores_cop)]
+    valores_vcc = [res.VCC for res in list_res]
+    vcc = [valores_vcc[0], valores_vcc[-1], max(valores_vcc), min(valores_vcc)]
+    valores_pinch = [res.pinch for res in list_res]
+    pinch = [valores_pinch[0], valores_pinch[-1], max(valores_pinch), min(valores_pinch)]
+    T_dis = [list_res[0].puntos["2"].T, list_res[-1].puntos["2"].T, max(res.puntos["2"].T for res in list_res), min(res.puntos["2"].T for res in list_res)]
+    p_k = [list_res[0].puntos["2"].P, list_res[-1].puntos["2"].P, max(res.puntos["2"].P for res in list_res), min(res.puntos["2"].P for res in list_res)]
+    p_0 = [list_res[0].puntos["1"].P, list_res[-1].puntos["1"].P, max(res.puntos["1"].P for res in list_res), min(res.puntos["1"].P for res in list_res)]
+    glide_k = [list_res[0].glide[0], list_res[-1].glide[0], max(res.glide[0] for res in list_res), min(res.glide[0] for res in list_res)]
+    glide_0 = [list_res[0].glide[1], list_res[-1].glide[1], max(res.glide[1] for res in list_res), min(res.glide[1] for res in list_res)]
+    datos_resumen.append({
+        "fluido": list_res[0].fluido,
+        "mezcla": mezcla,
+        "cop": cop,
+        "vcc": vcc,
+        "pinch": pinch,
+        "T_dis": T_dis,
+        "P_k": p_k,
+        "P_0": p_0,
+        "glide_k": glide_k,
+        "glide_0": glide_0,
+    })
+    
+pprint(datos_resumen)
+
+
+
+
+
+
 
 def main():
     init_refprop()
     
     # DATOS
-    water_config = "alta" # "baja" / "intermedia" / "media" / "alta"
+    water_config = "baja" # "baja" / "intermedia" / "media" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
 
@@ -902,6 +987,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ...
 
 
