@@ -875,86 +875,205 @@ init_refprop()
 water_config = "media"
 
 # Resumen
+def crear_datos_resumen(water_config: str) -> list[dict[str, Any]]:
+    fichero_json = "resultados.json"
+    path_json = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json)
 
-fichero_json = "resultados.json"
-path_json = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json)
+    with open(path_json, "r", encoding="utf-8") as f:
+        dic_res = json.load(f)
 
-fichero_excel_resumen = "resumen_resultados.xlsx"
-path_excel_resumen = os.path.join("resultados_ciclo_basico", water_config, "binaria", fichero_excel_resumen)
+    dic_res: dict[str, dict[str, list[CicloOutput]]] = deserializar(dic_res)
 
-with open(path_json, "r", encoding="utf-8") as f:
-    dic_res = json.load(f)
+    [vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(water_config)
 
-dic_res: dict[str, dict[str, list[CicloOutput]]] = deserializar(dic_res)
+    # Quitar valores que tengan COP menor a COP_propano
+    dic_temp: dict[str, dict[str, list[CicloOutput]]] = {}
+    for ref_a, sub_dict in dic_res.items():
+        for ref_b, lista_res in sub_dict.items():
+            dic_temp.setdefault(ref_a, {})[ref_b] = filtrar(lista_res, vcc_min, vcc_max)
+            if dic_temp[ref_a][ref_b]:
+                dic_temp[ref_a][ref_b] = [
+                    res for res in dic_temp[ref_a][ref_b] if res.COP >= cop_propano
+                ]
 
-[vcc_min, vcc_max, cop_propano] = calcular_valores_referencia(water_config)
+    dic_res = dic_temp
+    del dic_temp
 
-# Quitar valores que tengan COP menor a COP_propano
-dic_temp: dict[str, dict[str, list[CicloOutput]]] = {}
-for ref_a, sub_dict in dic_res.items():
-    for ref_b, lista_res in sub_dict.items():
-        dic_temp.setdefault(ref_a, {})[ref_b] = filtrar(lista_res, vcc_min, vcc_max)
-        if dic_temp[ref_a][ref_b]:
-            dic_temp[ref_a][ref_b] = [
-                res for res in dic_temp[ref_a][ref_b] if res.COP >= cop_propano
-            ]
+    posibles_refrigerantes = list(dic_res.keys())
 
-dic_res = dic_temp
-del dic_temp
+    lista_mejores_res: list[list[CicloOutput]] = []
 
-posibles_refrigerantes = list(dic_res.keys())
+    for index_a, ref_a in enumerate(posibles_refrigerantes[:-1]):
 
-lista_mejores_res: list[list[CicloOutput]] = []
+        for ref_b in posibles_refrigerantes[index_a + 1:]:
 
-for index_a, ref_a in enumerate(posibles_refrigerantes[:-1]):
+            lista_mejores_res.append(dic_res.get(ref_a, {}).get(ref_b, [])) if dic_res.get(ref_a, {}).get(ref_b, []) else ...
 
-    for ref_b in posibles_refrigerantes[index_a + 1:]:
+    # Quitar listas vacías
+    lista_mejores_res = [sub for sub in lista_mejores_res if sub]
 
-        lista_mejores_res.append(dic_res.get(ref_a, {}).get(ref_b, [])) if dic_res.get(ref_a, {}).get(ref_b, []) else ...
+    # Ordenar por COP
+    lista_mejores_res.sort(key = lambda list_res: max(res.COP for res in list_res), reverse=True)
 
-# Quitar listas vacías
-lista_mejores_res = [sub for sub in lista_mejores_res if sub]
+    datos_resumen: list[dict[str, Any]] = []
 
-# Ordenar por COP
-lista_mejores_res.sort(key = lambda list_res: max(res.COP for res in list_res), reverse=True)
+    def resumen(lista: list[float]) -> list[float]:
+        return [lista[0], lista[-1], max(lista), min(lista)]
 
-pprint(lista_mejores_res)
+    for list_res in lista_mejores_res:
+        [pprint(res.mezcla) for res in list_res]
+        print()
+        # BUG
+        fluido = lista_res[0].fluido
+        mezcla = [
+            [round(v, 3) for v in res.mezcla]
+            for res in [lista_res[0], lista_res[-1]]
+        ]
+        mezcla = [f"{mezcla[0][0]*100:.1f}% {fluido[0]} + {mezcla[0][1]*100:.1f}% {fluido[1]}", f"{mezcla[1][0]*100:.1f}% {fluido[0]} + {mezcla[1][1]*100:.1f}% {fluido[1]}"]
 
-datos_resumen: list[dict[str, Any]] = []
+        
 
-for list_res in lista_mejores_res:
-    mezcla = [list_res[0].mezcla, list_res[-1].mezcla]
-    valores_cop = [res.COP for res in list_res]
-    cop = [valores_cop[0], valores_cop[-1], max(valores_cop), min(valores_cop)]
-    valores_vcc = [res.VCC for res in list_res]
-    vcc = [valores_vcc[0], valores_vcc[-1], max(valores_vcc), min(valores_vcc)]
-    valores_pinch = [res.pinch for res in list_res]
-    pinch = [valores_pinch[0], valores_pinch[-1], max(valores_pinch), min(valores_pinch)]
-    T_dis = [list_res[0].puntos["2"].T, list_res[-1].puntos["2"].T, max(res.puntos["2"].T for res in list_res), min(res.puntos["2"].T for res in list_res)]
-    p_k = [list_res[0].puntos["2"].P, list_res[-1].puntos["2"].P, max(res.puntos["2"].P for res in list_res), min(res.puntos["2"].P for res in list_res)]
-    p_0 = [list_res[0].puntos["1"].P, list_res[-1].puntos["1"].P, max(res.puntos["1"].P for res in list_res), min(res.puntos["1"].P for res in list_res)]
-    glide_k = [list_res[0].glide[0], list_res[-1].glide[0], max(res.glide[0] for res in list_res), min(res.glide[0] for res in list_res)]
-    glide_0 = [list_res[0].glide[1], list_res[-1].glide[1], max(res.glide[1] for res in list_res), min(res.glide[1] for res in list_res)]
-    datos_resumen.append({
-        "fluido": list_res[0].fluido,
-        "mezcla": mezcla,
-        "cop": cop,
-        "vcc": vcc,
-        "pinch": pinch,
-        "T_dis": T_dis,
-        "P_k": p_k,
-        "P_0": p_0,
-        "glide_k": glide_k,
-        "glide_0": glide_0,
-    })
+        cop = resumen([res.COP for res in list_res])
+        vcc = resumen([res.VCC for res in list_res])
+        pinch = resumen([res.pinch for res in list_res])
+        T_dis = resumen([res.puntos["2"].T for res in list_res])
+        p_k = resumen([res.puntos["2"].P for res in list_res])
+        p_0 = resumen([res.puntos["1"].P for res in list_res])
+        glide_k = resumen([res.glide[0] for res in list_res])
+        glide_0 = resumen([res.glide[1] for res in list_res])
+
+        datos_resumen.append({
+            "fluido": ", ".join(list_res[0].fluido),
+            "mezcla": mezcla,
+            "COP": cop,
+            "VCC": vcc,
+            "T pinch": pinch,
+            "T descarga": T_dis,
+            "Presion k": p_k,
+            "Presion 0": p_0,
+            "glide k": glide_k,
+            "glide 0": glide_0,
+        })
     
-pprint(datos_resumen)
+    return datos_resumen
 
+def crear_excel(
+    datos: list[dict[str, Any]],
+    ancho_columna: float = 14,
+    ancho_separador: float = 4
+):
+    fichero_excel_resumen = "resumen_resultados.xlsx"
+    path_excel_resumen = os.path.join(
+        "resultados_ciclo_basico",
+        water_config,
+        "binarias",
+        fichero_excel_resumen
+    )
 
+    FORMATO_KEYS = {
+    "Presion 0":     {"dec": 2, "unit": " bar"},
+    "Presion k":     {"dec": 2, "unit": " bar"},
+    "T descarga":   {"dec": 1, "unit": " °C"},
+    "COP":     {"dec": 2, "unit": ""},
+    "VCC":     {"dec": 1, "unit": " kJ/m3"},
+    "T pinch":   {"dec": 2, "unit": " ºC"},
+    "glide 0": {"dec": 2, "unit": " ºC"},
+    "glide k": {"dec": 2, "unit": " ºC"},
+}
 
+    def formatear_valor(key: str, valor: float) -> str:
+        cfg = FORMATO_KEYS.get(key)
+        if cfg is None:
+            return valor
 
+        dec = cfg["dec"]
+        unit = cfg.get("unit", "")
 
+        if unit:
+            return f"{valor:.{dec}f}{unit}"
+        else:
+            return round(valor, dec)
 
+    def autoajustar_columnas(ws, col_inicio, col_relativas, fila_inicio=1, fila_fin=None, padding=2):
+        if fila_fin is None:
+            fila_fin = ws.max_row
+
+        for offset in col_relativas:
+            col_idx = col_inicio + offset
+            col_letter = get_column_letter(col_idx)
+
+            max_len = 0
+            for fila in range(fila_inicio, fila_fin + 1):
+                value = ws.cell(row=fila, column=col_idx).value
+                if value is not None:
+                    max_len = max(max_len, len(str(value)))
+
+            ws.column_dimensions[col_letter].width = max_len + padding
+
+    os.makedirs(os.path.dirname(path_excel_resumen), exist_ok=True)
+
+    wb = Workbook()
+    ws = wb.active
+
+    align_center = Alignment(horizontal="center", vertical="center")
+    col_inicio = 1
+
+    for bloque in datos:
+        # Anchos columnas bloque
+        for i in range(5):
+            col = get_column_letter(col_inicio + i)
+            ws.column_dimensions[col].width = ancho_columna
+
+        # Fila 1: fluido
+        ws.merge_cells(
+            start_row=1,
+            start_column=col_inicio,
+            end_row=1,
+            end_column=col_inicio + 4
+        )
+        ws.cell(row=1, column=col_inicio, value=bloque["fluido"]).alignment = align_center
+
+        # Fila 2
+        headers = ["", "Inicial", "Final", "Máximo", "Mínimo"]
+        for i, h in enumerate(headers):
+            ws.cell(row=2, column=col_inicio + i, value=h).alignment = align_center
+
+        # Fila 3: mezcla
+        ws.cell(row=3, column=col_inicio, value="mezcla").alignment = align_center
+        ws.cell(row=3, column=col_inicio + 1, value=bloque["mezcla"][0]).alignment = align_center
+        ws.cell(row=3, column=col_inicio + 2, value=bloque["mezcla"][1]).alignment = align_center
+
+        fila = 4
+        for k, v in bloque.items():
+            if isinstance(v, list) and len(v) == 4:
+                ws.cell(row=fila, column=col_inicio, value=k).alignment = align_center
+                for i in range(4):
+                    valor = formatear_valor(k, v[i])
+                    ws.cell(
+                        row=fila,
+                        column=col_inicio + 1 + i,
+                        value=valor
+                    ).alignment = align_center
+                fila += 1
+
+        # Columna separadora
+        sep_col = get_column_letter(col_inicio + 5)
+        ws.column_dimensions[sep_col].width = ancho_separador
+
+        autoajustar_columnas(
+            ws,
+            col_inicio=col_inicio,
+            col_relativas=[1, 2]  # columnas 2 y 3 del bloque
+        )
+
+        col_inicio += 6
+        
+    wb.save(path_excel_resumen)
+    wb.close()
+
+datos_resumen = crear_datos_resumen(water_config)
+
+crear_excel(datos_resumen)
 
 def main():
     init_refprop()
@@ -983,6 +1102,11 @@ def main():
     (casos, cop_propano) = crear_casos(water_config)
 
     generar_graficos_binarios(casos, cop_propano, water_config)
+
+    # CREAR RESUMEN
+    datos_resumen = crear_datos_resumen(water_config)
+
+    crear_excel(datos_resumen)
 
 
 
