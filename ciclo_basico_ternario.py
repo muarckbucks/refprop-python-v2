@@ -6,7 +6,6 @@ from ciclo_basico_binario import calcular_ciclo_basico, worker_calcular
 import numpy as np
 import json, os
 from concurrent.futures import ProcessPoolExecutor
-from pprint import pprint
 from tqdm import tqdm
 
 # Cálculo bruto
@@ -60,7 +59,7 @@ def calcular_resultados(posibles_refrigerantes: list[str], water_config: str, n_
     resultados: list[CicloOutput] = []
 
     # Crear lista de inputs (cada input es: [fluido, mezcla, water_config])
-    lista_inputs: tuple[list[str], list[float], dict[str, list[float]]] = [
+    lista_inputs: list[tuple[list[str], list[float], dict[str, list[float]]]] = [
         (comb_ref, prop, water_config)
         for comb_ref in combinaciones_ref
         for prop in rango_proporciones
@@ -527,11 +526,11 @@ def main():
     init_refprop()
     
     # DATOS
-    water_config = "media"
+    water_config = "media" # "baja" / "intermedia" / "media" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
-    posibles_refrigerantes = ["PROPANE", "BUTANE", "DME"]
-    n_prop = 21 # 5% de salto entre proporción y proporción
+
+    n_prop = 21 # 5% de salto entre proporción y proporción de refrigerante
 
     # CÁLCULO BRUTO
     resultados = calcular_resultados(posibles_refrigerantes, water_config, n_prop)

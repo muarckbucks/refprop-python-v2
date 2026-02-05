@@ -6,6 +6,8 @@ from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Alignment, Font
 import matplotlib.pyplot as plt
+from concurrent.futures import ProcessPoolExecutor
+from tqdm import tqdm
 
 def calcular_ciclo_basico(
     fluido: str | list[str],
@@ -225,37 +227,33 @@ def calcular_mezclas(posibles_refrigerantes: list[str], water_config: str):
                 [resultados[ref_a][ref_b].append(0) for _ in range(n_calcs)]
 
     # Calcular mezclas de refrigerantes
-    for index_a, ref_a in enumerate(posibles_refrigerantes[:-1]):
+    
+    print("### CÁLCULO BRUTO ###")
+    for index_a, ref_a in tqdm(list(enumerate(posibles_refrigerantes[:-1])),
+                               total = len(posibles_refrigerantes) - 1):
 
         for ref_b in posibles_refrigerantes[index_a + 1:]:
 
             props_a = list(np.linspace(0, 1, n_calcs))
             props_a = [float(x) for x in props_a]
             
-            for index_prop, prop_a in enumerate(props_a):
-                prop_b = 1 - prop_a
-                mezcla = [prop_a, prop_b]
+            mezclas: list[list[float]] = [[prop_a, 1 - prop_a] for prop_a in props_a]
+            lista_inputs: list[tuple[list[float], list[float], str]] = [
+                ([ref_a, ref_b], mezcla, water_config)
+                for mezcla in mezclas
+                ]
 
-                resultado = calcular_ciclo_basico([ref_a, ref_b], mezcla, water_config)
-                # Ir imprimiendo resultados
-                string_comp = ""
+            cpu = os.cpu_count() // 2 or 1 # Usar la mitad de núcleos de la CPU
+            chunksize = 2 # Está bien para la duración de la función (aprox 1s)
 
-                # Comprobar si no ha dado error el cálculo
-                if resultado.error is None:
-                    for fluid, comp in zip(resultado.fluido, resultado.mezcla):
-                        string_comp += f"{fluid}: {(comp*100):.1f}%, "
-                    print(string_comp + f"COP = {resultado.COP:.3f}")
-                else:
-                    for fluid, comp in zip(resultado.fluido, resultado.mezcla):
-                        string_comp += f"{fluid}: {(comp*100):.1f}%, "
-                    print(string_comp + f"ERROR = {resultado.error}")                    
-                
-                # Graficar resultado
-                # if resultado.error is None:
-                #     puntos_PH(list(resultado.puntos.values()), 1.5, 0.2)
+            with ProcessPoolExecutor(max_workers=cpu, initializer=init_refprop) as ex:
+                res = list(ex.map(worker_calcular, lista_inputs, chunksize=chunksize)) # Devuelve ya serializado
+            res: list[CicloOutput] = deserializar(res)
+            for index, resultado in enumerate(res):
 
-                resultados[ref_a][ref_b][index_prop] = resultado
-                resultados[ref_b][ref_a][n_calcs - 1 - index_prop] = resultado
+                resultados[ref_a][ref_b][index] = resultado
+                resultados[ref_b][ref_a][n_calcs - 1 - index] = resultado
+
  
     # Guardar resultados en json
     os.makedirs(os.path.dirname(path_json), exist_ok=True)
@@ -782,7 +780,7 @@ def main():
     init_refprop()
     
     # DATOS
-    water_config = "media" # "baja" / "media" / "intermedia" / "alta"
+    water_config = "media" # "baja" / "intermedia" / "media" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
 
