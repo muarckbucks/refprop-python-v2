@@ -526,7 +526,7 @@ def main():
     init_refprop()
     
     # DATOS
-    water_config = "media" # "baja" / "intermedia" / "media" / "alta"
+    water_config = "alta" # "baja" / "intermedia" / "media" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
 

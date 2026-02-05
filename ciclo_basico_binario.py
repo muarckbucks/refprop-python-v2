@@ -389,6 +389,94 @@ def json_a_excel(water_config: str):
 
     wb.save(path_excel)
 
+def json_a_excel_filtrado(water_config: str) -> None:
+    PASO = 0.025
+
+    fichero_json_filtrado = "resultados_filtrados.json"
+    path_json_filtrado = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_json_filtrado)
+
+    fichero_excel_filtrado = "resultados_filtrados.xlsx"
+    path_excel_filtrado = os.path.join("resultados_ciclo_basico", water_config, "binarias", fichero_excel_filtrado)
+
+    # Cargar json
+    with open(path_json_filtrado, "r", encoding="utf-8") as f:
+        data: dict[str, dict[str, list[dict[str, Any]]]] = json.load(f)
+
+    # Eje fijo de composiciones
+    composiciones = [[round(1 - i*PASO, 3), round(i*PASO, 3)] for i in range(int(1/PASO)+1)]
+    col_composicion = [f"{(c[0]*100):.1f}% {(c[1]*100):.1f}%" for c in composiciones]
+    indice_composicion = {tuple(c): i for i, c in enumerate(composiciones)}
+    max_filas = len(composiciones)
+
+    keys_filtradas = ["COP", "VCC", "pinch", "puntos", "glide"]
+    key_composicion = "mezcla"
+
+    with pd.ExcelWriter(path_excel_filtrado, engine="openpyxl") as writer:
+        for hoja, columnas in data.items():
+            # Inicializar diccionario del DataFrame con la columna Composición
+            df_dict = {"Composición": col_composicion.copy()}
+
+            # Crear columnas vacías para cada columna original
+            for col_name in columnas.keys():
+                df_dict[col_name] = [""] * max_filas
+
+            # Rellenar cada columna según la mezcla
+            for col_name, bloques in columnas.items():
+                for bloque in bloques:
+                    bloque_data = bloque["__data__"]
+                    if key_composicion not in bloque_data:
+                        continue
+                    mezcla = [round(x, 3) for x in bloque_data[key_composicion]]
+                    if tuple(mezcla) not in indice_composicion:
+                        continue
+                    fila_base = indice_composicion[tuple(mezcla)]
+
+                    # Preparar texto del bloque
+                    filas_texto = []
+                    for key in keys_filtradas:
+                        if key not in bloque_data:
+                            continue
+                        if key == "glide":
+                            filas_texto.append(f"glide k: {bloque_data[key][0]:.1f} ºC")
+                            filas_texto.append(f"glide 0: {bloque_data[key][1]:.1f} ºC")
+                        elif key == "puntos":
+                            puntos = deserializar(bloque_data[key])
+                            filas_texto.append(f"T dis: {puntos['2'].T:.1f} ºC")
+                            filas_texto.append(f"Presión k: {puntos['2'].P:.2f} bar")
+                            filas_texto.append(f"Presión 0: {puntos['1'].P:.2f} bar")
+                        elif key == "pinch":
+                            filas_texto.append(f"T pinch: {bloque_data[key]:.1f} ºC")
+                        elif key == "VCC":
+                            filas_texto.append(f"VCC: {bloque_data[key]:.2f} kJ/m3")
+                        elif isinstance(bloque_data[key], float):
+                            filas_texto.append(f"{key}: {round(bloque_data[key], 3)}")
+                        else:
+                            filas_texto.append(f"{key}: {bloque_data[key]}")
+
+                    # Unir en un solo string y poner en la fila correspondiente
+                    df_dict[col_name][fila_base] = "\n".join(filas_texto)
+
+            df = pd.DataFrame(df_dict)
+            df.to_excel(writer, sheet_name=hoja, index=False)
+
+    # Formato con openpyxl
+    wb = load_workbook(path_excel_filtrado)
+    for hoja in wb.sheetnames:
+        ws = wb[hoja]
+
+        # Centrar celdas y ajustar ancho
+        alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.alignment = alignment
+
+        for i, column_cells in enumerate(ws.columns, 1):
+            ws.column_dimensions[get_column_letter(i)].width = 25
+
+        ws.freeze_panes = "B2"
+
+    wb.save(path_excel_filtrado)
+
 # Cálculo fino
 def refinar_mezclas(water_config: str):
     fichero_json = "resultados.json"
@@ -787,7 +875,7 @@ def main():
     init_refprop()
     
     # DATOS
-    water_config = "baja" # "baja" / "intermedia" / "media" / "alta"
+    water_config = "alta" # "baja" / "intermedia" / "media" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
 
@@ -804,6 +892,8 @@ def main():
 
     # CREAR GRÁFICOS BINARIOS
     ciclo_basico_filtrado(water_config)
+
+    json_a_excel_filtrado(water_config)
 
     (casos, cop_propano) = crear_casos(water_config)
 
