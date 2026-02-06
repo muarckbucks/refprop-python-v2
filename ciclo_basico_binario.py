@@ -871,9 +871,6 @@ def crear_casos(water_config: str) -> tuple[list[dict[str, Any]], float]:
 
     return (casos, cop_propano)
 
-init_refprop()
-water_config = "media"
-
 # Resumen
 def crear_datos_resumen(water_config: str) -> list[dict[str, Any]]:
     fichero_json = "resultados.json"
@@ -921,17 +918,14 @@ def crear_datos_resumen(water_config: str) -> list[dict[str, Any]]:
         return [lista[0], lista[-1], max(lista), min(lista)]
 
     for list_res in lista_mejores_res:
-        [pprint(res.mezcla) for res in list_res]
-        print()
-        # BUG
-        fluido = lista_res[0].fluido
+
+        fluido = list_res[0].fluido
         mezcla = [
             [round(v, 3) for v in res.mezcla]
-            for res in [lista_res[0], lista_res[-1]]
+            for res in [list_res[0], list_res[-1]]
         ]
         mezcla = [f"{mezcla[0][0]*100:.1f}% {fluido[0]} + {mezcla[0][1]*100:.1f}% {fluido[1]}", f"{mezcla[1][0]*100:.1f}% {fluido[0]} + {mezcla[1][1]*100:.1f}% {fluido[1]}"]
 
-        
 
         cop = resumen([res.COP for res in list_res])
         vcc = resumen([res.VCC for res in list_res])
@@ -959,6 +953,7 @@ def crear_datos_resumen(water_config: str) -> list[dict[str, Any]]:
 
 def crear_excel(
     datos: list[dict[str, Any]],
+    water_config: str,
     ancho_columna: float = 14,
     ancho_separador: float = 4
 ):
@@ -974,7 +969,7 @@ def crear_excel(
     "Presion 0":     {"dec": 2, "unit": " bar"},
     "Presion k":     {"dec": 2, "unit": " bar"},
     "T descarga":   {"dec": 1, "unit": " °C"},
-    "COP":     {"dec": 2, "unit": ""},
+    "COP":     {"dec": 3, "unit": ""},
     "VCC":     {"dec": 1, "unit": " kJ/m3"},
     "T pinch":   {"dec": 2, "unit": " ºC"},
     "glide 0": {"dec": 2, "unit": " ºC"},
@@ -1071,9 +1066,7 @@ def crear_excel(
     wb.save(path_excel_resumen)
     wb.close()
 
-datos_resumen = crear_datos_resumen(water_config)
 
-crear_excel(datos_resumen)
 
 def main():
     init_refprop()
@@ -1106,11 +1099,11 @@ def main():
     # CREAR RESUMEN
     datos_resumen = crear_datos_resumen(water_config)
 
-    crear_excel(datos_resumen)
+    crear_excel(datos_resumen, water_config)
 
 
 
 if __name__ == "__main__":
-    ...
+    main()
 
 
