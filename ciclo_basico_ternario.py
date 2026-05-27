@@ -69,10 +69,8 @@ def calcular_resultados(posibles_refrigerantes: list[str], water_config: str, n_
         cpu = os.cpu_count() // 2 or 1 # Usar la mitad de núcleos de la CPU
         chunksize = 2 # Está bien para la duración de la función (aprox 1s)
 
-        print("### CÁLCULO BRUTO ###")
-
         with ProcessPoolExecutor(max_workers=cpu, initializer=init_refprop) as ex:
-            resultados = list(tqdm(ex.map(worker_calcular, lista_inputs, chunksize=chunksize), total=len(lista_inputs))) # Devuelve ya serializado
+            resultados = list(tqdm(ex.map(worker_calcular, lista_inputs, chunksize=chunksize), total=len(lista_inputs), desc="Calculando mezclas (Cálculo bruto)")) # Devuelve ya serializado
     
     return deserializar(resultados)
 
@@ -311,14 +309,12 @@ def refinar_mezclas(water_config: str) -> list[CicloOutput]:
             for coord in coords:
                 lista_inputs.append((comb_ref, coord, water_config))
 
-    print("\n### CÁLCULO FINO ###")
-
     cpu = os.cpu_count() // 2 or 1 # Usar la mitad de núcleos de la CPU
     chunksize = 2 # Está bien para la duración de la función (aprox 1s)
 
     # Ejecutar cálculo paralelo
     with ProcessPoolExecutor(max_workers=cpu, initializer=init_refprop) as ex:
-        resultados_finos = list(tqdm(ex.map(worker_calcular, lista_inputs, chunksize=chunksize), total=len(lista_inputs)))
+        resultados_finos = list(tqdm(ex.map(worker_calcular, lista_inputs, chunksize=chunksize), total=len(lista_inputs), desc="Calculando mezclas (cálculo fino)"))
 
 
     resultados_finos: list[CicloOutput] = deserializar(resultados_finos)
@@ -501,7 +497,7 @@ def generar_graficos_ternarios(lista_casos, config, water_config) -> None:
                 if perc_mode and val_referencia_calculado is not None and val_referencia_calculado != 0:
                     variacion = ((t / val_referencia_calculado) - 1) * 100
                     etiquetas.append(f"{'+' if variacion > 0 else ''}{variacion:.1f}%")
-                    label_cb = f'Variación respecto a {val_referencia_calculado:.2f}'
+                    label_cb = f'Variación respecto a Propano'
                 else:
                     etiquetas.append(f"{t:.2f}")
                     label_cb = f'{magnitud}'
@@ -571,24 +567,14 @@ def obtener_casos(water_config) -> tuple[list[dict[tuple, dict[str, float]]], di
 
     return (casos, config_mag)
 
-init_refprop()
-
-water_config = "intermedia"
-
-(datos_casos, config_mag) = obtener_casos(water_config)
-
-generar_graficos_ternarios(datos_casos, config_mag, water_config)
-
 
 def main():
     init_refprop()
     
     # DATOS
-    water_config = "media" # "baja" / "intermedia" / "media" / "alta"
+    water_config = "baja" # "baja" / "intermedia" / "media" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
-
-    posibles_refrigerantes = ["PROPANE", "PROPYLENE", "DME"]
 
     n_prop = 21 # 5% de salto entre proporción y proporción de refrigerante
 
@@ -618,7 +604,7 @@ def main():
 
 
 if __name__ == "__main__":
-    ...
+    main()
 
 
 

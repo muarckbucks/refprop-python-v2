@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 from pprint import pprint
+import matplotlib.ticker as mtick
 
 def calcular_ciclo_basico(
     fluido: str | list[str],
@@ -228,11 +229,10 @@ def calcular_mezclas(posibles_refrigerantes: list[str], water_config: str):
                 [resultados[ref_a][ref_b].append(0) for _ in range(n_calcs)]
 
     # Calcular mezclas de refrigerantes
-    print("### CÁLCULO BRUTO ###")
     n = len(posibles_refrigerantes)
     total = n * (n - 1) // 2
 
-    with tqdm(total = total) as pbar:
+    with tqdm(total = total, desc="Calculando mezclas") as pbar:
         for index_a, ref_a in enumerate(posibles_refrigerantes[:-1]):
 
             for ref_b in posibles_refrigerantes[index_a + 1:]:
@@ -796,8 +796,7 @@ def generar_graficos_binarios(casos, valor_referencia, water_config):
         plt.xticks([i/10 for i in range(11)], [f'{i*10}%' for i in range(11)])
         
         # Eje Y con sufijo %
-        current_values = plt.gca().get_yticks()
-        plt.gca().set_yticklabels([f'{int(x)}%' for x in current_values])
+        plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(decimals=0))
 
         plt.title(f'Desviación porcentual respecto a referencia: {nombre}', fontsize=12)
         plt.xlabel(f'Composición de {ejes[0]}')
@@ -1072,7 +1071,7 @@ def main():
     init_refprop()
     
     # DATOS
-    water_config = "baja" # "baja" / "intermedia" / "media" / "alta"
+    water_config = "alta" # "baja" / "intermedia" / "media" / "alta"
 
     posibles_refrigerantes = ["PROPANE", "BUTANE", "ISOBUTANE", "PROPYLENE", "DME"]
 
