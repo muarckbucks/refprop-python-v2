@@ -15,7 +15,7 @@ def calcular_ciclo_basico(
     fluido: str | list[str],
     mezcla: list[float],
     water_config: str,
-    approach_ini: float = 6.5, # Provar
+    approach_ini: float = 6.5,
     approach_max: float = 20,
     step: float = 0.5
 ) -> CicloOutput:
