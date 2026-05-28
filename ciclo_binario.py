@@ -235,12 +235,11 @@ def calcular_valores_referencia(water_config: str) -> tuple[float, float, float]
 def filtrar(df: pd.DataFrame, vhc_min: float, vhc_max: float) -> pd.DataFrame:
     mask = (
         df["error"].isna()
-        # & df["VHC"].between(vhc_min, vhc_max)
-        # & (df["t_2"] < 130)
-        # & (df["p_2"] < 25)
-        # & (df["pinch"] > 1)
-        # & (df["glide_k"] < 10)
-        # & (df["glide_0"] < 10)
+        & df["VHC"].between(vhc_min, vhc_max)
+        & (df["t_2"] < 130)
+        & (df["p_2"] < 28)
+        & (df["glide_k"] < 10)
+        & (df["glide_0"] < 10)
     )
     return df[mask].sort_values("COP", ascending=False)
 
@@ -372,7 +371,7 @@ def df_a_excel(water_config: str) -> None:
     "t_4", "p_4", "h_4", "s_4", "d_4",
     "COP", "VHC", "pinch", "glide_k", "glide_0",
     "approach_k", "error",
-]
+    ]
 
     df[cols_mostrar].to_excel(path_excel, index=False)
 
@@ -401,10 +400,15 @@ def df_a_excel_filtrado(water_config: str) -> None:
     df_f = filtrar(df, vhc_min, vhc_max)
 
     cols_mostrar = [
-        "fluid_A", "fluid_B", "x_A", "x_B",
-        "COP", "VHC", "pinch", "glide_k", "glide_0",
-        "t_2", "p_2", "p_1",
+    "fluid_A", "fluid_B", "x_A", "x_B", "water_config",
+    "t_1", "p_1", "h_1", "s_1", "d_1",
+    "t_2", "p_2", "h_2", "s_2", "d_2",
+    "t_3", "p_3", "h_3", "s_3", "d_3",
+    "t_4", "p_4", "h_4", "s_4", "d_4",
+    "COP", "VHC", "pinch", "glide_k", "glide_0",
+    "approach_k", "error",
     ]
+
     df_f[cols_mostrar].to_excel(path_excel, index=False)
 
     wb = load_workbook(path_excel)
@@ -432,10 +436,15 @@ def df_a_excel_fino(water_config: str) -> None:
     df_f = filtrar(df, vhc_min, vhc_max)
 
     cols_mostrar = [
-        "fluid_A", "fluid_B", "x_A", "x_B",
-        "COP", "VHC", "pinch", "glide_k", "glide_0",
-        "t_2", "p_2", "p_1",
+    "fluid_A", "fluid_B", "x_A", "x_B", "water_config",
+    "COP", "VHC", "pinch", "glide_k", "glide_0",
+    "approach_k", "error",
+    "t_1", "p_1", "h_1", "s_1", "d_1",
+    "t_2", "p_2", "h_2", "s_2", "d_2",
+    "t_3", "p_3", "h_3", "s_3", "d_3",
+    "t_4", "p_4", "h_4", "s_4", "d_4"
     ]
+
     df_f[cols_mostrar].to_excel(path_excel, index=False)
 
     wb = load_workbook(path_excel)
@@ -457,81 +466,64 @@ def df_a_excel_fino(water_config: str) -> None:
 def crear_excel_resumen(water_config: str) -> None:
     path_parquet = os.path.join("resultados_ciclo_basico", water_config, "binarias", "resultados_finos.parquet")
     path_excel   = os.path.join("resultados_ciclo_basico", water_config, "binarias", "resumen_resultados.xlsx")
-
+ 
     df = pd.read_parquet(path_parquet)
     vhc_min, vhc_max, cop_propano = calcular_valores_referencia(water_config)
+    vhc_propano = (vhc_min + vhc_max) / 2
     df_f = filtrar(df, vhc_min, vhc_max)
     df_f = df_f[df_f["COP"] >= cop_propano]
-
-    if df_f.empty:
-        print("Sin resultados con COP >= propano.")
-        return
-
-    FORMATO = {
-        "COP":      {"dec": 3, "unit": ""},
-        "VHC":      {"dec": 1, "unit": " kJ/m³"},
-        "pinch":    {"dec": 2, "unit": " °C"},
-        "glide_k":  {"dec": 2, "unit": " °C"},
-        "glide_0":  {"dec": 2, "unit": " °C"},
-        "t_2":      {"dec": 1, "unit": " °C"},
-        "p_2":      {"dec": 2, "unit": " bar"},
-        "p_1":      {"dec": 2, "unit": " bar"},
-    }
-
-    def fmt(key, val):
-        cfg = FORMATO.get(key)
-        if cfg is None or pd.isna(val):
-            return val
-        s = f"{val:.{cfg['dec']}f}{cfg['unit']}"
-        return s
-
-    wb = Workbook()
-    ws = wb.active
-    align_c = Alignment(horizontal="center", vertical="center")
-    bold = Font(bold=True)
-
-    col_inicio = 1
-
-    for (ref_a, ref_b), grupo in df_f.groupby(["fluid_A", "fluid_B"]):
-        grupo = grupo.sort_values("COP", ascending=False)
-        best = grupo.iloc[0]
-
-        headers = ["", "Inicial", "Final", "Máximo", "Mínimo"]
-        KEYS_RES = ["COP", "VHC", "pinch", "glide_k", "glide_0", "t_2", "p_2", "p_1"]
-
-        # Título
-        ws.merge_cells(start_row=1, start_column=col_inicio, end_row=1, end_column=col_inicio + 4)
-        c = ws.cell(row=1, column=col_inicio, value=f"{ref_a} / {ref_b}")
-        c.alignment = align_c; c.font = bold
-
-        # Headers
-        for i, h in enumerate(headers):
-            ws.cell(row=2, column=col_inicio + i, value=h).alignment = align_c
-
-        # Mezcla best
-        ws.cell(row=3, column=col_inicio, value="mezcla").alignment = align_c
-        ws.cell(row=3, column=col_inicio + 1, value=f"{best['x_A']*100:.1f}% {ref_a} + {best['x_B']*100:.1f}% {ref_b}").alignment = align_c
-
-        fila = 4
-        for k in KEYS_RES:
-            vals = grupo[k].dropna()
-            if vals.empty:
-                continue
-            row_vals = [vals.iloc[0], vals.iloc[-1], vals.max(), vals.min()]
-            ws.cell(row=fila, column=col_inicio, value=k).alignment = align_c
-            for i, v in enumerate(row_vals):
-                ws.cell(row=fila, column=col_inicio + 1 + i, value=fmt(k, v)).alignment = align_c
-            fila += 1
-
-        for i in range(5):
-            ws.column_dimensions[get_column_letter(col_inicio + i)].width = 22
-
-        # Columna separadora
-        ws.column_dimensions[get_column_letter(col_inicio + 5)].width = 4
-        col_inicio += 6
-
-    ws.freeze_panes = "A2"
+ 
+    cols_mostrar = [
+        "fluid_A", "fluid_B", "x_A", "x_B", "water_config",
+        "COP", "ΔCOP", "VHC", "ΔVHC", "pinch", "glide_k", "glide_0",
+        "approach_k", "error",
+        "t_1", "p_1", "h_1", "s_1", "d_1",
+        "t_2", "p_2", "h_2", "s_2", "d_2",
+        "t_3", "p_3", "h_3", "s_3", "d_3",
+        "t_4", "p_4", "h_4", "s_4", "d_4",
+    ]
+ 
+    def add_deltas(dataframe):
+        dataframe = dataframe.copy()
+        dataframe["ΔCOP"] = (dataframe["COP"] - cop_propano)/cop_propano
+        dataframe["ΔVHC"] = (dataframe["VHC"] - vhc_propano)/vhc_propano
+        return dataframe
+ 
+    def best_per_pair(dataframe):
+        return (
+            dataframe.sort_values("COP", ascending=False)
+                     .groupby(["fluid_A", "fluid_B"], sort=False)
+                     .first()
+                     .reset_index()
+        )
+ 
+    def select_cols(dataframe):
+        cols = [c for c in cols_mostrar if c in dataframe.columns]
+        return dataframe[cols]
+ 
+    df_sin_filtro = select_cols(add_deltas(best_per_pair(df)))
+    df_con_filtro = select_cols(add_deltas(best_per_pair(df_f))) if not df_f.empty else pd.DataFrame(columns=cols_mostrar)
+ 
     os.makedirs(os.path.dirname(path_excel), exist_ok=True)
+ 
+    with pd.ExcelWriter(path_excel, engine="openpyxl") as writer:
+        df_sin_filtro.to_excel(writer, sheet_name="sin_filtrar", index=False)
+        df_con_filtro.to_excel(writer, sheet_name="filtrado",    index=False)
+ 
+    wb = load_workbook(path_excel)
+    align = Alignment(horizontal="center", vertical="center")
+    bold  = Font(bold=True)
+ 
+    for ws in wb.worksheets:
+        for cell in ws[1]:
+            cell.alignment = align
+            cell.font = bold
+        for i, col in enumerate(ws.columns, 1):
+            ws.column_dimensions[get_column_letter(i)].width = 15
+            for cell in col:
+                cell.alignment = align
+        ws.freeze_panes = "A2"
+ 
     wb.save(path_excel)
 
 
@@ -546,7 +538,8 @@ def generar_graficos_binarios(water_config: str) -> None:
 
     df = pd.read_parquet(path_parquet)
     vhc_min, vhc_max, cop_propano = calcular_valores_referencia(water_config)
-    df_f = filtrar(df, vhc_min, vhc_max)
+    # df_f = filtrar(df, vhc_min, vhc_max)
+    df_f = df # Temporal porque no quiero filtrar de momento por VHC
 
     for (ref_a, ref_b), grupo in df_f.groupby(["fluid_A", "fluid_B"]):
         nombre = f"{ref_a}, {ref_b}"
@@ -577,8 +570,8 @@ def generar_graficos_binarios(water_config: str) -> None:
 def main():
     init_refprop()
 
-    water_config = "alta"  # "baja" / "intermedia" / "media" / "alta"
-    posibles_refrigerantes = ["PROPANE", "DME"]
+    water_config = "media_7"  # "media_7" / "alta_7" / "media" / "alta"
+    posibles_refrigerantes = ["PROPANE", "DME", "ISOBUTANE", "PROPYLENE", "CO2", "BUTANE", "ETHANE", "ETHYLENE", "METHANE"]
 
     # 1. Cálculo bruto
     calcular_mezclas(posibles_refrigerantes, water_config)

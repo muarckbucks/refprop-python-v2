@@ -11,13 +11,13 @@ class ErrorPuntoBifasico(Exception):
     ...
 
 WATER_CONFIG = {
-    "baja": {
-        "t_hw": [30, 35],
-        "t_cw": [0, -3],
+    "media_7": {
+        "t_hw": [47, 55],
+        "t_cw": [7, -3],
     },
-    "intermedia": {
-        "t_hw": [40, 45],
-        "t_cw": [0, -3],
+    "alta_7": {
+        "t_hw": [55, 65],
+        "t_cw": [7, -3],
     },
     "media": {
         "t_hw": [47, 55],
