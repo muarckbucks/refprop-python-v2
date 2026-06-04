@@ -701,8 +701,7 @@ def generar_graficos_ternarios(
     import warnings
     warnings.filterwarnings("ignore", category=UserWarning,
                             message=".*No data for colormapping provided.*")
-
-
+ 
     ASHRAE_NAMES = {
         "DME":       "Dimetil Éter",
         "PROPYLENE": "Propileno",
@@ -714,11 +713,10 @@ def generar_graficos_ternarios(
         "ETHANE":    "Etano",
         "ETHYLENE":  "Etileno",
     }
-
+ 
     def to_ashrae(name: str) -> str:
         return ASHRAE_NAMES.get(name.upper(), name)
-
-
+ 
     def ternary_to_cartesian(a, b, c):
         """Convierte coordenadas ternarias (a, b, c) a cartesianas (x, y).
         a = bottom (eje horizontal), b = right, c = left
@@ -727,31 +725,53 @@ def generar_graficos_ternarios(
         x = 0.5 * (2 * a + b) / total
         y = (np.sqrt(3) / 2) * b / total
         return x, y
-
+ 
+    def puntos_son_degenerados(x_pts, y_pts, umbral_area=1e-6):
+        """Devuelve True si los puntos son colineales o casi colineales
+        (el convex hull 2D tiene área menor que umbral_area).
+        """
+        from scipy.spatial import ConvexHull
+        pts_2d = np.stack([x_pts, y_pts], axis=1)
+        pts_unicos = np.unique(pts_2d, axis=0)
+        if len(pts_unicos) < 3:
+            return True
+        try:
+            hull = ConvexHull(pts_unicos)
+            return hull.volume < umbral_area   # en 2D, .volume es el área
+        except Exception:
+            return True
+ 
     for caso in tqdm(lista_casos, desc="Generando gráficos ternarios"):
         nombres_lista = caso["nombre"]
-        nombre_str    = "_".join(nombres_lista)                          # sin cambio, para rutas de archivo
-        titulo_base   = ", ".join(to_ashrae(n) for n in nombres_lista)  # ← ASHRAE en título
-        ejes          = [to_ashrae(n) for n in nombres_lista]           # ← ASHRAE en ejes
+        nombre_str    = "_".join(nombres_lista)
+        titulo_base   = ", ".join(to_ashrae(n) for n in nombres_lista)
+        ejes          = [to_ashrae(n) for n in nombres_lista]
         diccionario_valores = caso["valores"]
-
+ 
         carpeta_salida = os.path.join(
             "resultados_ciclo_basico", water_config, "ternarias", "graficos", nombre_str
         )
         os.makedirs(carpeta_salida, exist_ok=True)
-
+ 
         for magnitud, conf_data in config.items():
             coords = list(diccionario_valores.keys())
             vals   = [diccionario_valores[c][magnitud] for c in coords]
-
+ 
+            # ── Guard 1: puntos insuficientes para cualquier interpolación ──
+            n_pts = len(coords)
+            if n_pts < 3:
+                plt.close()
+                continue
+            # ────────────────────────────────────────────────────────────────
+ 
             v_min_data, v_max_data = min(vals), max(vals)
-
+ 
             ref_type  = conf_data["ref"]["type"]
             ref_val   = conf_data["ref"]["val"]
             perc_mode = conf_data["perc"]
             cmap_name = "coolwarm"
             val_referencia_calculado = None
-
+ 
             if ref_type == "set_center":
                 center = ref_val
                 delta  = max(abs(v_max_data - center), abs(v_min_data - center))
@@ -759,27 +779,27 @@ def generar_graficos_ternarios(
                 vmin, vmax = center - delta, center + delta
                 norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
                 val_referencia_calculado = center
-
+ 
             elif ref_type == "set_min_max":
                 vmin, vmax = ref_val[0], ref_val[1]
                 center = (vmin + vmax) / 2
                 norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
                 val_referencia_calculado = center
-
+ 
             elif ref_type == "set_max":
                 vmin, vmax = v_min_data, ref_val
                 if vmin >= vmax: vmin = vmax - 0.001
                 norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
                 cmap_name = "Reds"
                 val_referencia_calculado = vmin
-
+ 
             elif ref_type == "set_min":
                 vmin, vmax = ref_val, v_max_data
                 if vmin >= vmax: vmax = vmin + 0.001
                 norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
                 cmap_name = "Blues_r"
                 val_referencia_calculado = vmax
-
+ 
             elif ref_type == "center":
                 center = (v_min_data + v_max_data) / 2
                 delta  = (v_max_data - v_min_data) / 2
@@ -787,20 +807,20 @@ def generar_graficos_ternarios(
                 vmin, vmax = center - delta, center + delta
                 norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
                 val_referencia_calculado = center
-
+ 
             fig, tax = ternary.figure(scale=1.0)
             fig.set_size_inches(10, 8)
             cmap = plt.get_cmap(cmap_name)
-
+ 
             # ── Interpolación y relleno continuo ──────────────────────────────
             coords_arr = np.array(coords)   # shape (N, 3): (a, b, c)
             vals_arr   = np.array(vals)
-
+ 
             # Puntos originales en cartesiano
             x_pts, y_pts = ternary_to_cartesian(
                 coords_arr[:, 0], coords_arr[:, 1], coords_arr[:, 2]
             )
-
+ 
             # Malla densa dentro del triángulo
             grid_res = 300
             a_lin = np.linspace(0, 1, grid_res)
@@ -808,37 +828,57 @@ def generar_graficos_ternarios(
             aa, bb = np.meshgrid(a_lin, b_lin)
             cc = 1.0 - aa - bb
             mask = cc >= 0  # solo puntos dentro del triángulo
-
+ 
             x_grid, y_grid = ternary_to_cartesian(aa[mask], bb[mask], cc[mask])
-
-            # Interpolación: cubic donde sea posible, linear como fallback
-            try:
-                z_grid = griddata(
-                    np.stack([x_pts, y_pts], axis=1),
-                    vals_arr,
-                    np.stack([x_grid, y_grid], axis=1),
-                    method="cubic",
-                    fill_value=np.nan,
-                )
-                # Si cubic deja demasiados NaN (datos en zona pequeña), rellenar con linear
-                nan_ratio = np.isnan(z_grid).sum() / len(z_grid)
-                if nan_ratio > 0.5:
+ 
+            pts_origen  = np.stack([x_pts,  y_pts],  axis=1)
+            pts_destino = np.stack([x_grid, y_grid], axis=1)
+ 
+            # ── Guard 2: puntos degenerados (colineales o casi colineales) ──
+            if puntos_son_degenerados(x_pts, y_pts):
+                # nearest no necesita triangulación: nunca lanza QhullError
+                try:
                     z_grid = griddata(
-                        np.stack([x_pts, y_pts], axis=1),
-                        vals_arr,
-                        np.stack([x_grid, y_grid], axis=1),
-                        method="linear",
+                        pts_origen, vals_arr, pts_destino,
+                        method="nearest",
+                    )
+                except Exception:
+                    plt.close()
+                    continue
+            else:
+                # ── Flujo normal: cubic → linear → nearest ──────────────────
+                try:
+                    z_grid = griddata(
+                        pts_origen, vals_arr, pts_destino,
+                        method="cubic",
                         fill_value=np.nan,
                     )
-            except Exception:
-                z_grid = griddata(
-                    np.stack([x_pts, y_pts], axis=1),
-                    vals_arr,
-                    np.stack([x_grid, y_grid], axis=1),
-                    method="linear",
-                    fill_value=np.nan,
-                )
-
+                    # Si cubic deja demasiados NaN, rellenar con linear
+                    nan_ratio = np.isnan(z_grid).sum() / len(z_grid)
+                    if nan_ratio > 0.5:
+                        z_grid = griddata(
+                            pts_origen, vals_arr, pts_destino,
+                            method="linear",
+                            fill_value=np.nan,
+                        )
+                except Exception:
+                    try:
+                        z_grid = griddata(
+                            pts_origen, vals_arr, pts_destino,
+                            method="linear",
+                            fill_value=np.nan,
+                        )
+                    except Exception:
+                        try:
+                            z_grid = griddata(
+                                pts_origen, vals_arr, pts_destino,
+                                method="nearest",
+                            )
+                        except Exception:
+                            plt.close()
+                            continue
+            # ──────────────────────────────────────────────────────────────────
+ 
             # Filtrar NaN para tripcolor
             valid = ~np.isnan(z_grid)
             ax = tax.get_axes()
@@ -855,19 +895,18 @@ def generar_graficos_ternarios(
                     )
                 except Exception:
                     pass
-            # ──────────────────────────────────────────────────────────────────
-
+ 
             tax.boundary(linewidth=2.0)
             tax.gridlines(color="black", multiple=0.1)
             tax.ticks(axis="lbr", multiple=0.1, linewidth=1, offset=0.02, tick_formats="%.1f")
             tax.get_axes().axis("off")
             tax.clear_matplotlib_ticks()
-
+ 
             tax.set_title(f"{titulo_base}: {magnitud}", pad=30, fontsize=15)
             tax.bottom_axis_label(ejes[0], offset=0.06)
             tax.right_axis_label(ejes[1],  offset=0.14)
             tax.left_axis_label(ejes[2],   offset=0.14)
-
+ 
             # Colorbar
             if valid.sum() >= 3:
                 cb = fig.colorbar(tc, ax=ax, fraction=0.046, pad=0.08)
@@ -876,10 +915,10 @@ def generar_graficos_ternarios(
                 sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
                 sm.set_array([])
                 cb = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.08)
-
+ 
             ticks_vals = np.linspace(vmin, vmax, 9)
             cb.set_ticks(ticks_vals)
-
+ 
             etiquetas = []
             for t in ticks_vals:
                 if perc_mode and val_referencia_calculado:
@@ -889,10 +928,10 @@ def generar_graficos_ternarios(
                 else:
                     etiquetas.append(f"{t:.2f}")
                     label_cb = magnitud
-
+ 
             cb.set_ticklabels(etiquetas)
             cb.set_label(label_cb)
-
+ 
             tax.savefig(os.path.join(carpeta_salida, f"{magnitud}.png"))
             plt.close()
 
