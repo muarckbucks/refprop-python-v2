@@ -914,6 +914,323 @@ def _formato_excel(path_excel: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Gráfico COP/COP_R290 vs VHC/VHC_R290
+# ---------------------------------------------------------------------------
+
+# ── Constantes de estilo disponibles ────────────────────────────────────────
+# Puedes usar cualquiera de estos en el parámetro `estilo` de cada punto.
+#
+#  COLORES predefinidos  (también acepta cualquier color válido de matplotlib)
+#  ─────────────────────────────────────────────────────────────────────────
+#  "azul", "rojo", "verde", "naranja", "morado", "cian", "magenta",
+#  "marron", "gris", "negro"
+#
+#  MARCADORES predefinidos  (también acepta el código directo de matplotlib)
+#  ──────────────────────────────────────────────────────────────────────────
+#  "circulo"     → "o"     "cuadrado"   → "s"     "triangulo"  → "^"
+#  "triangulo_d" → "v"     "rombo"      → "D"     "rombo_p"    → "d"
+#  "pentagono"   → "p"     "estrella"   → "*"      "hexagono"   → "h"
+#  "cruz"        → "+"     "x"          → "x"     "punto"      → "."
+#
+#  TAMAÑOS predefinidos  (también acepta un float directamente)
+#  ──────────────────────────────────────────────────────────────────────────
+#  "pequeño" → 60     "normal" → 120     "grande" → 200     "enorme" → 350
+# ────────────────────────────────────────────────────────────────────────────
+
+def grafico_COP_VHC(
+    COMPOSICIONES: list[list[float]],
+    FLUIDOS: list[list[str]],
+    water_config: str = "alta",
+    # ── Configuración de cada punto ─────────────────────────────────────────
+    # Lista de dicts con claves opcionales:
+    #   color    : color del punto  (str, ver tabla arriba)
+    #   marcador : forma del punto  (str, ver tabla arriba)
+    #   tamanio  : tamaño del punto (str o float, ver tabla arriba)
+    #   alpha    : opacidad 0-1     (float, default 0.85)
+    #   etiqueta_offset : (dx, dy) en unidades de datos para desplazar la
+    #                     anotación respecto al centro del punto
+    #                     (tuple[float,float], default (0, 0.02))
+    estilos: list[dict] | None = None,
+    # ── Aspecto general del gráfico ─────────────────────────────────────────
+    titulo: str = "Mapa COP / VHC normalizado respecto a R290 (Propano)",
+    figsize: tuple[float, float] = (11, 8),
+    fuente_anotacion: int = 8,
+    # ── Zona de aceptación ──────────────────────────────────────────────────
+    # Las tres rectas definen:
+    #   x = 1 - margen_vhc   (frontera VHC mínimo)
+    #   x = 1 + margen_vhc   (frontera VHC máximo)
+    #   y = 1                 (COP debe ser al menos igual al R290)
+    margen_vhc: float = 0.30,
+    color_zona: str = "green",
+    alpha_zona: float = 0.08,
+    color_rectas: str = "darkgreen",
+    lw_rectas: float = 1.6,
+    mostrar_leyenda_zona: bool = True,
+    # ── Márgenes del canvas ─────────────────────────────────────────────────
+    x_margen: float = 0.15,
+    y_margen: float = 0.15,
+
+    # ── Límites manuales de los ejes (None = automático) ────────────────────
+    x_min: float | None = None,
+    x_max: float | None = None,
+    y_min: float | None = None,
+    y_max: float | None = None,
+    # ── Salida ──────────────────────────────────────────────────────────────
+    guardar_ruta: str | None = None,   # si se indica, guarda la figura
+    dpi: int = 150,
+    mostrar: bool = False,
+) -> plt.Figure:
+    """
+    Genera un gráfico de dispersión con:
+      • Eje X : VHC / VHC_{R290}
+      • Eje Y : COP / COP_{R290}
+
+    Las tres rectas delimitan la zona de aceptación:
+      • x = 1 - margen_vhc  (VHC mínimo aceptable)
+      • x = 1 + margen_vhc  (VHC máximo aceptable)
+      • y = 1               (COP al menos igual al propano)
+
+    Parámetros principales
+    ----------------------
+    COMPOSICIONES : lista de listas con las fracciones molares de cada mezcla.
+                    Para mezclas binarias: [x_A, x_B]
+                    Para mezclas ternarias: [x_A, x_B, x_C]
+    FLUIDOS       : lista de listas con los nombres REFPROP de cada mezcla.
+    water_config  : configuración de agua ('alta', 'media', …).
+    estilos       : lista de dicts con opciones de estilo para cada punto.
+                    Las claves no indicadas usan el valor por defecto.
+
+    Ejemplo de uso
+    --------------
+    grafico_COP_VHC(
+        COMPOSICIONES = [[0.8, 0.1, 0.1], [0.5, 0.5], [0.33, 0.33, 0.34]],
+        FLUIDOS       = [
+            ["CO2", "PROPANE", "PROPYLENE"],
+            ["DME", "CO2"],
+            ["PROPANE", "PROPYLENE", "DME"],
+        ],
+        water_config = "alta",
+        estilos = [
+            {"color": "azul",    "marcador": "circulo",  "tamanio": "grande"},
+            {"color": "rojo",    "marcador": "rombo",    "tamanio": "normal"},
+            {"color": "naranja", "marcador": "estrella", "tamanio": "enorme",
+             "etiqueta_offset": (0.02, 0.02)},
+        ],
+    )
+    """
+
+    # ── Tablas de traducción de alias ────────────────────────────────────────
+    _COLORES = {
+        "azul": "steelblue", "rojo": "firebrick", "verde": "seagreen",
+        "naranja": "darkorange", "morado": "mediumpurple", "cian": "darkcyan",
+        "magenta": "deeppink", "marron": "saddlebrown", "gris": "slategray",
+        "negro": "black",
+    }
+    _MARCADORES = {
+        "circulo": "o", "cuadrado": "s", "triangulo": "^", "triangulo_d": "v",
+        "rombo": "D", "rombo_p": "d", "pentagono": "p", "estrella": "*",
+        "hexagono": "h", "cruz": "+", "x": "x", "punto": ".",
+    }
+    _TAMANIOS = {
+        "pequeño": 60, "normal": 120, "grande": 200, "enorme": 350,
+    }
+
+    def _resolver_estilo(d: dict) -> dict:
+        """Resuelve alias y aplica defaults para un dict de estilo."""
+        color    = d.get("color",    "steelblue")
+        marcador = d.get("marcador", "o")
+        tamanio  = d.get("tamanio",  "normal")
+        alpha    = d.get("alpha",    0.85)
+        offset   = d.get("etiqueta_offset", (0, 0.02))
+        return {
+            "color":    _COLORES.get(color, color),
+            "marcador": _MARCADORES.get(marcador, marcador),
+            "tamanio":  _TAMANIOS.get(tamanio, tamanio) if isinstance(tamanio, str) else tamanio,
+            "alpha":    alpha,
+            "offset":   offset,
+        }
+
+    # ── Valores de referencia R290 ────────────────────────────────────────────
+    vhc_min_ref, vhc_max_ref, cop_ref = calcular_valores_referencia(water_config)
+    vhc_ref = (vhc_min_ref + vhc_max_ref) / 2  # VHC_R290 = valor sin margen
+
+    # Recalcular VHC_R290 puro (calcular_valores_referencia devuelve ±30 % ya
+    # aplicados, así que el valor puro se recupera de la media)
+    # Nota: vhc_min_ref = 0.7·VHC_R290, vhc_max_ref = 1.3·VHC_R290
+    #       → VHC_R290 = vhc_min_ref / 0.7 = vhc_max_ref / 1.3
+    vhc_r290 = vhc_min_ref / (1 - margen_vhc)
+    cop_r290 = cop_ref
+
+    # ── Calcular COP y VHC de cada punto de entrada ───────────────────────────
+    xs: list[float] = []   # VHC / VHC_R290
+    ys: list[float] = []   # COP / COP_R290
+    etiquetas_fluidos: list[str] = []
+    etiquetas_comps:   list[str] = []
+    errores: list[str | None] = []
+
+    for fluidos, comps in zip(FLUIDOS, COMPOSICIONES):
+        n = len(fluidos)
+
+        # Normalizar a ternaria: si es binaria o pura, rellenar con fluidos
+        # ficticios con fracción 0 (REFPROP los ignora)
+        if n == 1:
+            # Fluido puro: x_A = 1, los demás = 0
+            fA, fB, fC = fluidos[0], fluidos[0], fluidos[0]
+            xA, xB = 1.0, 0.0
+        elif n == 2:
+            fA, fB, fC = fluidos[0], fluidos[1], fluidos[1]
+            xA, xB = comps[0], comps[1]
+        else:  # ternaria o más (se usan solo los 3 primeros)
+            fA, fB, fC = fluidos[0], fluidos[1], fluidos[2]
+            xA, xB = comps[0], comps[1]
+
+        row = calcular_ciclo_basico(fA, fB, fC, xA, xB, water_config)
+
+        err = row.get("error")
+        errores.append(err)
+
+        if err:
+            xs.append(float("nan"))
+            ys.append(float("nan"))
+        else:
+            xs.append(row["VHC"] / vhc_r290)
+            ys.append(row["COP"] / cop_r290)
+
+        # Etiqueta superior: nombres de fluidos separados por coma
+        etiquetas_fluidos.append(", ".join(fluidos))
+        # Etiqueta inferior: composiciones (omitida para fluidos puros)
+        etiquetas_comps.append(
+            None if n == 1
+            else ", ".join(f"{c:.2f}" for c in comps)
+        )
+
+    # ── Construir figura ──────────────────────────────────────────────────────
+    fig, ax = plt.subplots(figsize=figsize)
+
+ # ── Determinar rango del canvas (ignorando NaN) ───────────────────────
+    xs_validos = [v for v in xs if not np.isnan(v)]
+    ys_validos = [v for v in ys if not np.isnan(v)]
+
+    x_lo = x_min if x_min is not None else (min(xs_validos + [1 - margen_vhc], default=0.5) - x_margen)
+    x_hi = x_max if x_max is not None else (max(xs_validos + [1 + margen_vhc], default=1.5) + x_margen)
+    y_lo = y_min if y_min is not None else (min(ys_validos + [1.0], default=0.5) - y_margen)
+    y_hi = y_max if y_max is not None else (max(ys_validos + [1.0], default=1.5) + y_margen)  # ← ver nota
+
+    # ── Zona de aceptación (solo rectas, sin relleno) ────────────────────────
+    x_izq = 1 - margen_vhc
+    x_der = 1 + margen_vhc
+    y_base = 1.0
+
+    # ── Tres segmentos delimitadores (forma de U abierta hacia arriba) ────────
+    # Segmento vertical izquierdo: (x_izq, y_base) → (x_izq, +inf)
+    # Segmento horizontal:         (x_izq, y_base) → (x_der, y_base)
+    # Segmento vertical derecho:   (x_der, y_base) → (x_der, +inf)
+    y_hi_seg = y_hi + 0.5   # suficientemente alto para parecer infinito
+    lineas_kwargs = dict(color=color_rectas, lw=lw_rectas, ls="-", zorder=2)
+
+    ax.plot([x_izq, x_izq], [y_base, y_hi_seg], **lineas_kwargs,
+            label=f"Zona aceptable (±{margen_vhc*100:.0f}% VHC, COP≥R290)"
+            if mostrar_leyenda_zona else "_nolegend_")
+    ax.plot([x_izq, x_der], [y_base, y_base],   **lineas_kwargs, label="_nolegend_")
+    ax.plot([x_der, x_der], [y_base, y_hi_seg], **lineas_kwargs, label="_nolegend_")
+
+    # ── Punto de referencia R290 ──────────────────────────────────────────────
+    ax.scatter(1.0, 1.0, color="black", marker="*", s=220, zorder=5,
+               label="R290 (Propano)")
+    ax.annotate(
+        "R290\n(Propano)",
+        xy=(1.0, 1.0),
+        xytext=(1.0, 1.0 - 0.018),
+        fontsize=fuente_anotacion,
+        color="black",
+        fontweight="bold",
+        ha="center"
+    )
+
+    # ── Plotear cada punto ────────────────────────────────────────────────────
+    estilos = estilos or []
+
+    for i, (x, y) in enumerate(zip(xs, ys)):
+        est_raw = estilos[i] if i < len(estilos) else {}
+        est = _resolver_estilo(est_raw)
+
+        if np.isnan(x) or np.isnan(y):
+            # Punto con error: no se dibuja, pero se avisa por consola
+            print(
+                f"[grafico_COP_VHC] Punto {i} ({etiquetas_fluidos[i]}) "
+                f"no calculado: {errores[i]}"
+            )
+            continue
+
+        ax.scatter(
+            x, y,
+            c=est["color"],
+            marker=est["marcador"],
+            s=est["tamanio"],
+            alpha=est["alpha"],
+            edgecolors="white",
+            linewidths=0.6,
+            zorder=6,
+        )
+
+        # Anotación: línea 1 = fluidos, línea 2 = composiciones (omitida en puro)
+        dx, dy = est["offset"]
+        texto = (
+            etiquetas_fluidos[i]
+            if etiquetas_comps[i] is None
+            else f"{etiquetas_fluidos[i]}\n{etiquetas_comps[i]}"
+        )
+        ax.annotate(
+            texto,
+            xy=(x, y),
+            xytext=(x + dx, y + dy),
+            fontsize=fuente_anotacion,
+            color=est["color"],
+            ha="center",
+            va="bottom",
+            bbox=dict(
+                boxstyle="round,pad=0.25",
+                facecolor="white",
+                edgecolor=est["color"],
+                alpha=0.75,
+                linewidth=0.8,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color=est["color"],
+                lw=0.7,
+                alpha=0.6,
+            ),
+        )
+
+    # ── Ejes y estética ───────────────────────────────────────────────────────
+    ax.set_xlim(x_lo, x_hi)
+    ax.set_ylim(y_lo, y_hi)
+
+    ax.set_xlabel(r"$\mathrm{VHC}\,/\,\mathrm{VHC}_{R290}$", fontsize=12)
+    ax.set_ylabel(r"$\mathrm{COP}\,/\,\mathrm{COP}_{R290}$",  fontsize=12)
+    ax.set_title(titulo, fontsize=13, pad=12)
+
+    ax.grid(True, linestyle=":", linewidth=0.6, alpha=0.5)
+    ax.set_axisbelow(True)
+
+    if mostrar_leyenda_zona:
+        ax.legend(loc="upper left", fontsize=8, framealpha=0.85)
+
+    fig.tight_layout()
+
+    if guardar_ruta:
+        os.makedirs(os.path.dirname(guardar_ruta) or ".", exist_ok=True)
+        fig.savefig(guardar_ruta, dpi=dpi, bbox_inches="tight")
+        print(f"[grafico_COP_VHC] Figura guardada en: {guardar_ruta}")
+
+    if mostrar:
+        plt.show()
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -921,19 +1238,19 @@ def main():
     init_refprop()
 
     water_config = "alta"  # media, alta, media_7, alta_7
-    posibles_refrigerantes = ["PROPANE", "PROPYLENE", "DME", "CO2"]
+    posibles_refrigerantes = ["PROPANE", "PROPYLENE", "DME", "CO2", "ETHANE", "ETHYLENE", "BUTANE", "ISOBUTANE", "METHANE"]
     n_prop = 21  # 5% de salto entre proporción y proporción de refrigerante
 
-    # # 1. Cálculo bruto
-    # calcular_resultados(posibles_refrigerantes, water_config, n_prop)
-    # df_a_excel(water_config)
+    # 1. Cálculo bruto
+    calcular_resultados(posibles_refrigerantes, water_config, n_prop)
+    df_a_excel(water_config)
 
-    # # 2. Filtrado bruto
-    # df_a_excel_filtrado(water_config)
+    # 2. Filtrado bruto
+    df_a_excel_filtrado(water_config)
 
-    # # 3. Refinado fino
-    # refinar_mezclas(water_config)
-    # df_a_excel_fino(water_config)
+    # 3. Refinado fino
+    refinar_mezclas(water_config)
+    df_a_excel_fino(water_config)
 
     # 4. Resumen y TXT
     crear_excel_resumen(water_config)
@@ -942,6 +1259,25 @@ def main():
     # 5. Gráficos ternarios
     casos, config_mag = obtener_casos(water_config)
     generar_graficos_ternarios(casos, config_mag, water_config)
+
+#     grafico_COP_VHC(
+#     COMPOSICIONES = [[0.85, 0.15], [0.85, 0.15]],
+#     FLUIDOS = [
+#         ["DME", "PROPYLENE"],
+#         ["PROPANE", "DME"],
+#     ],
+#     estilos = [
+#         {"color": "rojo",    "marcador": "rombo",    "tamanio": "normal"},
+#         {"color": "naranja", "marcador": "estrella", "tamanio": 300, "alpha": 0.7},
+#     ],
+#     margen_vhc   = 0.30,
+#     guardar_ruta = "resultados/mapa_COP_VHC.png",
+
+#     y_min = 0.95,
+#     y_max = 1.20,
+#     x_min = 0.65,
+#     x_max = 1.35
+# )
 
 
 if __name__ == "__main__":
