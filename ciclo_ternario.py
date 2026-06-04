@@ -11,6 +11,7 @@ import pandas as pd
 from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font
+from scipy.interpolate import griddata
 
 from refprop_utils import rprop, WATER_CONFIG, init_refprop
 
@@ -650,7 +651,7 @@ def guardar_txt(water_config: str) -> None:
 # ---------------------------------------------------------------------------
 
 def obtener_casos(water_config: str) -> tuple[list[dict], dict[str, dict[str, Any]]]:
-    path_parquet = os.path.join("resultados_ciclo_basico", water_config, "ternarias", "resultados_finos.parquet")
+    path_parquet = os.path.join("resultados_ciclo_basico", water_config, "ternarias", "resultados.parquet")
     df = pd.read_parquet(path_parquet)
 
     vhc_min, vhc_max, cop_propano = calcular_valores_referencia(water_config)
@@ -701,11 +702,37 @@ def generar_graficos_ternarios(
     warnings.filterwarnings("ignore", category=UserWarning,
                             message=".*No data for colormapping provided.*")
 
+
+    ASHRAE_NAMES = {
+        "DME":       "Dimetil Éter",
+        "PROPYLENE": "Propileno",
+        "PROPANE":   "Propano",
+        "CO2":       "CO2",
+        "BUTANE":    "Butano",
+        "ISOBUTANE": "Isobutano",
+        "METHANE":   "Metano",
+        "ETHANE":    "Etano",
+        "ETHYLENE":  "Etileno",
+    }
+
+    def to_ashrae(name: str) -> str:
+        return ASHRAE_NAMES.get(name.upper(), name)
+
+
+    def ternary_to_cartesian(a, b, c):
+        """Convierte coordenadas ternarias (a, b, c) a cartesianas (x, y).
+        a = bottom (eje horizontal), b = right, c = left
+        """
+        total = a + b + c
+        x = 0.5 * (2 * a + b) / total
+        y = (np.sqrt(3) / 2) * b / total
+        return x, y
+
     for caso in tqdm(lista_casos, desc="Generando gráficos ternarios"):
         nombres_lista = caso["nombre"]
-        nombre_str    = "_".join(nombres_lista)
-        titulo_base   = ", ".join(nombres_lista)
-        ejes          = nombres_lista
+        nombre_str    = "_".join(nombres_lista)                          # sin cambio, para rutas de archivo
+        titulo_base   = ", ".join(to_ashrae(n) for n in nombres_lista)  # ← ASHRAE en título
+        ejes          = [to_ashrae(n) for n in nombres_lista]           # ← ASHRAE en ejes
         diccionario_valores = caso["valores"]
 
         carpeta_salida = os.path.join(
@@ -719,15 +746,15 @@ def generar_graficos_ternarios(
 
             v_min_data, v_max_data = min(vals), max(vals)
 
-            ref_type = conf_data["ref"]["type"]
-            ref_val  = conf_data["ref"]["val"]
+            ref_type  = conf_data["ref"]["type"]
+            ref_val   = conf_data["ref"]["val"]
             perc_mode = conf_data["perc"]
             cmap_name = "coolwarm"
             val_referencia_calculado = None
 
             if ref_type == "set_center":
                 center = ref_val
-                delta = max(abs(v_max_data - center), abs(v_min_data - center))
+                delta  = max(abs(v_max_data - center), abs(v_min_data - center))
                 if delta == 0: delta = 0.001
                 vmin, vmax = center - delta, center + delta
                 norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
@@ -765,6 +792,71 @@ def generar_graficos_ternarios(
             fig.set_size_inches(10, 8)
             cmap = plt.get_cmap(cmap_name)
 
+            # ── Interpolación y relleno continuo ──────────────────────────────
+            coords_arr = np.array(coords)   # shape (N, 3): (a, b, c)
+            vals_arr   = np.array(vals)
+
+            # Puntos originales en cartesiano
+            x_pts, y_pts = ternary_to_cartesian(
+                coords_arr[:, 0], coords_arr[:, 1], coords_arr[:, 2]
+            )
+
+            # Malla densa dentro del triángulo
+            grid_res = 300
+            a_lin = np.linspace(0, 1, grid_res)
+            b_lin = np.linspace(0, 1, grid_res)
+            aa, bb = np.meshgrid(a_lin, b_lin)
+            cc = 1.0 - aa - bb
+            mask = cc >= 0  # solo puntos dentro del triángulo
+
+            x_grid, y_grid = ternary_to_cartesian(aa[mask], bb[mask], cc[mask])
+
+            # Interpolación: cubic donde sea posible, linear como fallback
+            try:
+                z_grid = griddata(
+                    np.stack([x_pts, y_pts], axis=1),
+                    vals_arr,
+                    np.stack([x_grid, y_grid], axis=1),
+                    method="cubic",
+                    fill_value=np.nan,
+                )
+                # Si cubic deja demasiados NaN (datos en zona pequeña), rellenar con linear
+                nan_ratio = np.isnan(z_grid).sum() / len(z_grid)
+                if nan_ratio > 0.5:
+                    z_grid = griddata(
+                        np.stack([x_pts, y_pts], axis=1),
+                        vals_arr,
+                        np.stack([x_grid, y_grid], axis=1),
+                        method="linear",
+                        fill_value=np.nan,
+                    )
+            except Exception:
+                z_grid = griddata(
+                    np.stack([x_pts, y_pts], axis=1),
+                    vals_arr,
+                    np.stack([x_grid, y_grid], axis=1),
+                    method="linear",
+                    fill_value=np.nan,
+                )
+
+            # Filtrar NaN para tripcolor
+            valid = ~np.isnan(z_grid)
+            ax = tax.get_axes()
+            if valid.sum() >= 3:
+                tc = ax.tripcolor(
+                    x_grid[valid], y_grid[valid], z_grid[valid],
+                    cmap=cmap, norm=norm, shading="gouraud",
+                )
+                # Contornos suaves encima (opcional, comenta si no los quieres)
+                try:
+                    ax.tricontour(
+                        x_grid[valid], y_grid[valid], z_grid[valid],
+                        levels=8, colors="k", linewidths=0.3, alpha=0.3,
+                    )
+                except Exception:
+                    pass
+            # ──────────────────────────────────────────────────────────────────
+
             tax.boundary(linewidth=2.0)
             tax.gridlines(color="black", multiple=0.1)
             tax.ticks(axis="lbr", multiple=0.1, linewidth=1, offset=0.02, tick_formats="%.1f")
@@ -776,14 +868,14 @@ def generar_graficos_ternarios(
             tax.right_axis_label(ejes[1],  offset=0.14)
             tax.left_axis_label(ejes[2],   offset=0.14)
 
-            for coord, val in zip(coords, vals):
-                color_punto = cmap(norm(val))
-                tax.scatter([coord], marker="o", color=color_punto,
-                            s=150, edgecolors="black", linewidths=0.5, zorder=5)
-
-            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-            sm.set_array([])
-            cb = fig.colorbar(sm, ax=tax.get_axes(), fraction=0.046, pad=0.08)
+            # Colorbar
+            if valid.sum() >= 3:
+                cb = fig.colorbar(tc, ax=ax, fraction=0.046, pad=0.08)
+            else:
+                # Fallback: colorbar vacío si no hay datos suficientes
+                sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+                sm.set_array([])
+                cb = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.08)
 
             ticks_vals = np.linspace(vmin, vmax, 9)
             cb.set_ticks(ticks_vals)
@@ -803,7 +895,6 @@ def generar_graficos_ternarios(
 
             tax.savefig(os.path.join(carpeta_salida, f"{magnitud}.png"))
             plt.close()
-
 
 # ---------------------------------------------------------------------------
 # Helper de formato Excel
@@ -830,19 +921,19 @@ def main():
     init_refprop()
 
     water_config = "alta"  # media, alta, media_7, alta_7
-    posibles_refrigerantes = ["PROPANE", "PROPYLENE", "DME"]
+    posibles_refrigerantes = ["PROPANE", "PROPYLENE", "DME", "CO2"]
     n_prop = 21  # 5% de salto entre proporción y proporción de refrigerante
 
-    # 1. Cálculo bruto
-    calcular_resultados(posibles_refrigerantes, water_config, n_prop)
-    df_a_excel(water_config)
+    # # 1. Cálculo bruto
+    # calcular_resultados(posibles_refrigerantes, water_config, n_prop)
+    # df_a_excel(water_config)
 
-    # 2. Filtrado bruto
-    df_a_excel_filtrado(water_config)
+    # # 2. Filtrado bruto
+    # df_a_excel_filtrado(water_config)
 
-    # 3. Refinado fino
-    refinar_mezclas(water_config)
-    df_a_excel_fino(water_config)
+    # # 3. Refinado fino
+    # refinar_mezclas(water_config)
+    # df_a_excel_fino(water_config)
 
     # 4. Resumen y TXT
     crear_excel_resumen(water_config)
