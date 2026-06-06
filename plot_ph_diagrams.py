@@ -36,6 +36,13 @@ ASHRAE_NAMES = {
     "ETHANE":    "R170",
     "ETHYLENE":  "R1150",
 }
+
+# Presión mínima de saturación [bar] por fluido.
+# Por debajo de este umbral la DLL falla (zona sublimación / punto triple).
+# El CO2 tiene punto triple en ~5.18 bar; se usa 5.5 bar como margen seguro.
+_P_MIN_SAT: dict[str, float] = {
+    "CO2": 5.5,
+}
  
  
 def _ashrae_label(fluid: list[str], comp: list[float]) -> str:
@@ -58,8 +65,9 @@ def _ashrae_label(fluid: list[str], comp: list[float]) -> str:
 # ---------------------------------------------------------------------------
  
 def _sat_curve(fluid: list[str], composition: list[float],
-               n_points: int = 300) -> tuple[np.ndarray, np.ndarray,
-                                              np.ndarray, np.ndarray]:
+               n_points: int = 300,
+               p_min_sat: Optional[float] = None) -> tuple[np.ndarray, np.ndarray,
+                                                            np.ndarray, np.ndarray]:
     """
     Calcula la curva de saturación (líquido + vapor) del fluido/mezcla.
  
@@ -69,6 +77,15 @@ def _sat_curve(fluid: list[str], composition: list[float],
     Estrategia para T_min (°C):
       - Barre desde -180 °C hacia Tcrit en pasos finos de 1 °C.
       - La primera T donde rprop acepta (T, Q=0) sin excepción es T_min.
+      - Si p_min_sat está definido, se avanza además hasta que la presión
+        de saturación supere ese umbral (útil para el CO2, cuyo punto
+        triple ronda los 5.18 bar y la DLL falla por debajo).
+
+    Parámetros adicionales
+    ----------------------
+    p_min_sat : float | None
+        Presión mínima [bar] por debajo de la cual no se intentan calcular
+        puntos de saturación. None → sin restricción adicional.
  
     Devuelve:
         h_liq, p_liq  – entalpías [kJ/kg] y presiones [bar], rama líquido
@@ -90,6 +107,19 @@ def _sat_curve(fluid: list[str], composition: list[float],
         raise RuntimeError(
             f"No se encontró T_min para {fluid} entre -180 °C y {T_crit_C:.1f} °C"
         )
+
+    # Parche para fluidos con punto triple notable (ej. CO2 ~5.18 bar):
+    # avanzar T_min_C hasta que P_sat supere p_min_sat, evitando que la DLL
+    # intente evaluar la bifase en la zona de sublimación.
+    if p_min_sat is not None:
+        for T_probe in np.arange(T_min_C, T_crit_C - 1, 0.5):
+            try:
+                p_test = rprop(fluid, "P", composition, T=float(T_probe), Q=0)
+                if p_test >= p_min_sat:
+                    T_min_C = float(T_probe)
+                    break
+            except Exception:
+                continue
  
     temps = np.linspace(T_min_C, T_crit_C - 0.05, n_points)
  
@@ -248,11 +278,20 @@ def plot_ph_diagrams(
  
         # Etiqueta leyenda con nombres ASHRAE
         label = _ashrae_label(fluid, comp)
+
+        # Límite inferior de presión de saturación específico por fluido.
+        # Para mezclas se toma el máximo de los límites de sus componentes
+        # (criterio conservador).
+        p_min_sat = max(
+            (_P_MIN_SAT.get(f, 0.0) for f in fluid),
+            default=None,
+        ) or None
  
         # Curva de saturación
         try:
-            h_liq, p_liq, h_vap, p_vap = _sat_curve(fluid, comp,
-                                                      n_points=n_points)
+            h_liq, p_liq, h_vap, p_vap = _sat_curve(
+                fluid, comp, n_points=n_points, p_min_sat=p_min_sat
+            )
         except Exception as exc:
             print(f"[AVISO] No se pudo calcular la curva para {fluid}: {exc}")
             continue
@@ -331,7 +370,7 @@ def plot_ph_diagrams(
  
     if legend_handles:
         ax.legend(handles=legend_handles, loc="upper left", framealpha=0.9,
-                  fontsize=10, title="Fluido y composición",
+                  fontsize=10, title="Fluido",
                   title_fontsize=10)
  
     fig.tight_layout()
@@ -346,15 +385,19 @@ if __name__ == "__main__":
     init_refprop()
 
     fluids_list = [
-        ["PROPYLENE", "DME", "BUTANE"],
-        ["PROPANE", "DME", "BUTANE"],
-        ["PROPYLENE", "DME", "ISOBUTANE"],
-        ["PROPANE"]
+        ["PROPANE"],
+        ["DME"],
+        ["CO2"],
+        ["METHANE"],
+        ["ETHANE"],
+        ["ETHYLENE"]
     ]
     compositions_list = [
-        [0.03, 0.66, 0.31],
-        [0.15, 0.51, 0.34],
-        [0.19, 0.65, 0.16],
+        [1],
+        [1],
+        [1],
+        [1],
+        [1],
         [1]
     ]
     my_colors = ["steelblue", "tomato", "seagreen", "black"]
@@ -363,17 +406,18 @@ if __name__ == "__main__":
         fluids=fluids_list,
         compositions=compositions_list,
         colors=my_colors,
-        puntos_ciclo=True,
+        puntos_ciclo=False,
         water_config="media",
         cycle_alpha=0.6,
         cycle_linewidth=1.5,
-        h_min=100,
+        h_min=0,
         h_max=800,
         p_min=2,
-        p_max=30,
+        p_max=80,
         log_p=True,
         title="Comparativa de diagramas P-H",
+        n_points=150,
     )
 
-    fig.savefig("resultados/t_media/3_mejores_con.png", bbox_inches="tight")
+    fig.savefig("diagramas_PH/fluidos_puros_volatiles.png", bbox_inches="tight")
     print("Figura guardada")

@@ -570,7 +570,7 @@ def generar_graficos_binarios(water_config: str) -> None:
 def main():
     init_refprop()
 
-    water_config = "media_7"  # "media_7" / "alta_7" / "media" / "alta"
+    water_config = "alta"  # "media_7" / "alta_7" / "media" / "alta"
     posibles_refrigerantes = ["PROPANE", "DME", "ISOBUTANE", "PROPYLENE", "CO2", "BUTANE", "ETHANE", "ETHYLENE", "METHANE"]
 
     # 1. Cálculo bruto
