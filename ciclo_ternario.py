@@ -1344,56 +1344,56 @@ def main():
 # TEMPERATURA ALTA
 # ==========================
 
-    grafico_COP_VHC(
-    water_config=water_config,
-    COMPOSICIONES = [
-        [0.04, 0.72, 0.24],
-        [0.15, 0.52, 0.33],
-        [0.19, 0.65, 0.16],
-        [0.99, 0.01],
-        [0.93, 0.07],
-        [0.95, 0.05],
-        [0.98, 0.02],
-        [0.99, 0.01],
-        [0.99, 0.01],
-        [1],
-        [0.85, 0.15]
-    ],
-    FLUIDOS = [
-        ["PROPYLENE", "DME", "BUTANE"],
-        ["PROPANE", "DME", "BUTANE"],
-        ["PROPYLENE", "DME", "ISOBUTANE"],
-        ["DME", "CO2"],
-        ["DME", "PROPYLENE"],
-        ["DME", "PROPANE"],
-        ["DME", "ETHANE"],
-        ["DME", "ETHYLENE"],
-        ["DME", "BUTANE"],
-        ["DME"],
-        ["PROPANE", "DME"]
+#     grafico_COP_VHC(
+#     water_config=water_config,
+#     COMPOSICIONES = [
+#         [0.04, 0.72, 0.24],
+#         [0.15, 0.52, 0.33],
+#         [0.19, 0.65, 0.16],
+#         [0.99, 0.01],
+#         [0.93, 0.07],
+#         [0.95, 0.05],
+#         [0.98, 0.02],
+#         [0.99, 0.01],
+#         [0.99, 0.01],
+#         [1],
+#         [0.85, 0.15]
+#     ],
+#     FLUIDOS = [
+#         ["PROPYLENE", "DME", "BUTANE"],
+#         ["PROPANE", "DME", "BUTANE"],
+#         ["PROPYLENE", "DME", "ISOBUTANE"],
+#         ["DME", "CO2"],
+#         ["DME", "PROPYLENE"],
+#         ["DME", "PROPANE"],
+#         ["DME", "ETHANE"],
+#         ["DME", "ETHYLENE"],
+#         ["DME", "BUTANE"],
+#         ["DME"],
+#         ["PROPANE", "DME"]
 
-    ],
-    estilos = [
-        {"color": "azul",    "marcador": "circulo",         "etiqueta_offset": (0, 0.02)},
-        {"color": "rojo", "marcador": "cuadrado",           "etiqueta_offset": (0, 0.01)},
-        {"color": "verde",     "marcador": "rombo"    ,     "etiqueta_offset": (0, 0.02)},
-        {"color": "naranja",     "marcador": "triangulo"  , "etiqueta_offset": (-0.01, 0.01)},
-        {"color": "morado",     "marcador": "triangulo_d" , "etiqueta_offset": (0.04, 0)},
-        {"color": "cian",     "marcador": "rombo_p"    ,    "etiqueta_offset": (0.03, -0.015)},
-        {"color": "magenta",     "marcador": "pentagono" ,  "etiqueta_offset": (0.04, 0.02)},
-        {"color": "marron",     "marcador": "estrella" ,    "etiqueta_offset": (0.015, -0.03)},
-        {"color": "gris",     "marcador": "hexagono" ,      "etiqueta_offset": (-0.045, 0.01)},
-        {"color": "negro",     "marcador": "x" ,            "etiqueta_offset": (-0.02, -0.02)},
-        {"color": "rojo",     "marcador": "rombo" ,   "etiqueta_offset": (0, 0.015), "anotacion": "Erik Mickoleit et al."}
-    ],
-    margen_vhc   = 0.30,
-    guardar_ruta = "resultados/mapa_COP_VHC.png",
+#     ],
+#     estilos = [
+#         {"color": "azul",    "marcador": "circulo",         "etiqueta_offset": (0, 0.02)},
+#         {"color": "rojo", "marcador": "cuadrado",           "etiqueta_offset": (0, 0.01)},
+#         {"color": "verde",     "marcador": "rombo"    ,     "etiqueta_offset": (0, 0.02)},
+#         {"color": "naranja",     "marcador": "triangulo"  , "etiqueta_offset": (-0.01, 0.01)},
+#         {"color": "morado",     "marcador": "triangulo_d" , "etiqueta_offset": (0.04, 0)},
+#         {"color": "cian",     "marcador": "rombo_p"    ,    "etiqueta_offset": (0.03, -0.015)},
+#         {"color": "magenta",     "marcador": "pentagono" ,  "etiqueta_offset": (0.04, 0.02)},
+#         {"color": "marron",     "marcador": "estrella" ,    "etiqueta_offset": (0.015, -0.03)},
+#         {"color": "gris",     "marcador": "hexagono" ,      "etiqueta_offset": (-0.045, 0.01)},
+#         {"color": "negro",     "marcador": "x" ,            "etiqueta_offset": (-0.02, -0.02)},
+#         {"color": "rojo",     "marcador": "rombo" ,   "etiqueta_offset": (0, 0.015), "anotacion": "Erik Mickoleit et al."}
+#     ],
+#     margen_vhc   = 0.30,
+#     guardar_ruta = "resultados/mapa_COP_VHC.png",
 
-    y_min = 0.95,
-    y_max = 1.20,
-    x_min = 0.65,
-    x_max = 1.35
-)
+#     y_min = 0.95,
+#     y_max = 1.20,
+#     x_min = 0.65,
+#     x_max = 1.35
+# )
 
 
 if __name__ == "__main__":
