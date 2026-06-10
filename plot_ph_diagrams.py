@@ -190,7 +190,7 @@ def plot_ph_diagrams(
     p_min: Optional[float] = None,
     p_max: Optional[float] = None,
     # ── opciones de curva de saturación ────────────────────────────────────
-    n_points: int = 50,
+    n_points: int = 200,
     linewidth: float = 2.0,
     linestyle: str = "-",
     # ── opciones de figura ──────────────────────────────────────────────────
@@ -386,19 +386,11 @@ if __name__ == "__main__":
 
     fluids_list = [
         ["PROPANE"],
-        ["DME"],
-        ["CO2"],
-        ["METHANE"],
-        ["ETHANE"],
-        ["ETHYLENE"]
+        ["PROPYLENE", "DME"]
     ]
     compositions_list = [
         [1],
-        [1],
-        [1],
-        [1],
-        [1],
-        [1]
+        [0.07, 0.93]
     ]
     my_colors = ["steelblue", "tomato", "seagreen", "black"]
 
@@ -406,18 +398,18 @@ if __name__ == "__main__":
         fluids=fluids_list,
         compositions=compositions_list,
         colors=my_colors,
-        puntos_ciclo=False,
+        puntos_ciclo=True,
         water_config="media",
         cycle_alpha=0.6,
         cycle_linewidth=1.5,
         h_min=0,
         h_max=800,
         p_min=2,
-        p_max=80,
+        p_max=30,
         log_p=True,
         title="Comparativa de diagramas P-H",
         n_points=150,
     )
 
-    fig.savefig("diagramas_PH/fluidos_puros_volatiles.png", bbox_inches="tight")
+    fig.savefig("diagramas_PH/mejor_screening.png", bbox_inches="tight")
     print("Figura guardada")
