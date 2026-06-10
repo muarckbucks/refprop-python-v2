@@ -795,59 +795,13 @@ if __name__ == "__main__":
             ),
 
             FluidSeries(
-                fluid       = ["DME"],
-                composition = [1],
-                color       = "tomato",
-                cycle       = CycleDef(
-                    source        = CycleSource.EXPERIMENTAL,
-                    xlsx_path     = "res-exp.xlsx",
-                    sheet_name    = "Hoja1",
-                    row           = 5,
-                    pressure_cols = PRESSURE_COLS,
-                    enthalpy_cols = ENTHALPY_COLS,
-                    linestyle     = "--",
-                    alpha         = 0.7,
-                ),
-            ),
-
-            FluidSeries(
-                fluid       = ["DME", "PROPYLENE"],
-                composition = [0.95, 0.05],
-                cycle       = CycleDef(
-                    source        = CycleSource.EXPERIMENTAL,
-                    xlsx_path     = "res-exp.xlsx",
-                    sheet_name    = "Hoja1",
-                    row           = 6,
-                    pressure_cols = PRESSURE_COLS,
-                    enthalpy_cols = ENTHALPY_COLS,
-                    linestyle     = "--",
-                    alpha         = 0.7,
-                ),
-            ),
-
-            FluidSeries(
-                fluid       = ["DME", "PROPYLENE"],
-                composition = [0.90, 0.10],
-                cycle       = CycleDef(
-                    source        = CycleSource.EXPERIMENTAL,
-                    xlsx_path     = "res-exp.xlsx",
-                    sheet_name    = "Hoja1",
-                    row           = 7,
-                    pressure_cols = PRESSURE_COLS,
-                    enthalpy_cols = ENTHALPY_COLS,
-                    linestyle     = "--",
-                    alpha         = 0.7,
-                ),
-            ),
-
-            FluidSeries(
-                fluid       = ["DME", "PROPYLENE"],
+                fluid       = ["PROPANE", "DME"],
                 composition = [0.85, 0.15],
                 cycle       = CycleDef(
                     source        = CycleSource.EXPERIMENTAL,
                     xlsx_path     = "res-exp.xlsx",
                     sheet_name    = "Hoja1",
-                    row           = 8,
+                    row           = 10,
                     pressure_cols = PRESSURE_COLS,
                     enthalpy_cols = ENTHALPY_COLS,
                     linestyle     = "--",
@@ -855,28 +809,14 @@ if __name__ == "__main__":
                 ),
             ),
 
-            FluidSeries(
-                fluid       = ["DME", "PROPYLENE"],
-                composition = [0.80, 0.20],
-                cycle       = CycleDef(
-                    source        = CycleSource.EXPERIMENTAL,
-                    xlsx_path     = "res-exp.xlsx",
-                    sheet_name    = "Hoja1",
-                    row           = 9,
-                    pressure_cols = PRESSURE_COLS,
-                    enthalpy_cols = ENTHALPY_COLS,
-                    linestyle     = "--",
-                    alpha         = 0.7,
-                ),
-            ),
         ],
-        h_min  = 0,
+        h_min  = 100,
         h_max  = 800,
-        p_min  = 2,
+        p_min  = 3,
         p_max  = 30,
         log_p  = True,
         title  = "Comparativa diagramas P-H de los ensayos experimentales",
     )
 
-    fig.savefig("diagramas_PH/ph_combinado.png", bbox_inches="tight")
+    fig.savefig("diagramas_PH/riley_exp.png", bbox_inches="tight")
     print("Figura guardada")
