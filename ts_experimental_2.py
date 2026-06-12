@@ -469,14 +469,29 @@ def _col_to_index(col: str | int) -> int:
     return column_index_from_string(str(col).strip().upper())
 
 
+# Columnas extra de temperatura para los puntos intermedios en saturación.
+# Cada entrada: clave del punto -> (columna Excel, calidad Q para rprop).
+_EXTRA_SAT_POINTS: dict[str, tuple[str, int]] = {
+    "1a": ("CU", 1),  # entre 1 y 2, saturación de vapor (Q=1)
+    "1b": ("DF", 0),  # entre 1a y 2, saturación de líquido (Q=0)
+    "3a": ("DS", 1),  # entre 3 y 4, saturación de vapor (Q=1)
+}
+
+
 def _load_experimental_points(
     cycle_def: CycleDef,
     series_label: str,
+    fluid: list[str],
+    composition: list[float],
 ) -> tuple[dict[str, float], dict[str, float]]:
     """
     Lee temperaturas [°C] y entropías [kJ/(kg·K)] desde el .xlsx definido
     en cycle_def. Devuelve (temperatures, entropies).
     Celdas vacías o no numéricas se omiten con aviso.
+
+    Además de los puntos T1..T4 / s1..s4, lee las columnas extra definidas
+    en _EXTRA_SAT_POINTS (temperatura) y calcula la entropía de saturación
+    correspondiente (Q según _EXTRA_SAT_POINTS) con rprop.
     """
     wb = openpyxl.load_workbook(cycle_def.xlsx_path, data_only=True, read_only=True)
 
@@ -514,8 +529,32 @@ def _load_experimental_points(
     for key, col in cycle_def.entropy_cols.items():
         _read_cell(key, col, entropies)
 
+    # ── Puntos extra en saturación (1a, 1b, 4a) ─────────────────────────────
+    for point_key, (col, quality) in _EXTRA_SAT_POINTS.items():
+        T_key = "T" + point_key
+        s_key = "s" + point_key
+        _read_cell(T_key, col, temperatures)
+        if T_key in temperatures:
+            try:
+                entropies[s_key] = rprop(
+                    fluid, "S", composition,
+                    T=temperatures[T_key], Q=quality,
+                )
+            except Exception as exc:
+                print(
+                    f"[AVISO] '{series_label}' (experimental): "
+                    f"no se pudo calcular s para '{point_key}' "
+                    f"(T={temperatures[T_key]} °C, Q={quality}): {exc}. "
+                    f"Punto omitido."
+                )
+                del temperatures[T_key]
+
     wb.close()
     return temperatures, entropies
+
+
+# Orden de dibujo del ciclo experimental (cierre 1 → 1a → 1b → 2 → 3 → 4 → 4a → 1)
+_CYCLE_ORDER = ["1", "1a", "1b", "2", "3", "3a", "4"]
 
 
 def _draw_experimental_cycle(
@@ -535,12 +574,12 @@ def _draw_experimental_cycle(
     Dibuja los puntos experimentales y, si hay más de uno, el ciclo cerrado
     en el plano T-S. Empareja "sN" con "TN" por sufijo.
     """
-    paired_s: list[float] = []
-    paired_T: list[float] = []
-    paired_idx: list[int] = []
+    paired_s: dict[str, float] = {}
+    paired_T: dict[str, float] = {}
 
     for s_key, s_val in entropies.items():
-        T_key = "T" + s_key[1:]
+        suffix = s_key[1:]  # "1", "1a", "2", "1b", "4a", ...
+        T_key = "T" + suffix
         if T_key not in temperatures:
             print(
                 f"[AVISO] '{series_label}' (experimental): "
@@ -548,24 +587,24 @@ def _draw_experimental_cycle(
                 f"Punto omitido."
             )
             continue
-        paired_s.append(s_val)
-        paired_T.append(temperatures[T_key])
-        suffix = "".join(c for c in s_key if c.isdigit())
-        paired_idx.append(int(suffix) if suffix else 0)
+        paired_s[suffix] = s_val
+        paired_T[suffix] = temperatures[T_key]
 
     if not paired_s:
         print(f"[AVISO] '{series_label}' (experimental): ningún punto válido. Se omite.")
         return
 
     ax.scatter(
-        paired_s, paired_T,
+        list(paired_s.values()), list(paired_T.values()),
         color=color, marker=marker, s=markersize ** 2, zorder=zorder,
     )
 
-    if len(paired_s) > 1:
-        order   = sorted(range(len(paired_idx)), key=lambda i: paired_idx[i])
-        s_ord   = [paired_s[i] for i in order]
-        T_ord   = [paired_T[i] for i in order]
+    # Ordenar según _CYCLE_ORDER, omitiendo puntos no presentes.
+    order = [k for k in _CYCLE_ORDER if k in paired_s]
+
+    if len(order) > 1:
+        s_ord = [paired_s[k] for k in order]
+        T_ord = [paired_T[k] for k in order]
         s_closed = s_ord + [s_ord[0]]
         T_closed = T_ord + [T_ord[0]]
 
@@ -709,7 +748,9 @@ def plot_ts_diagrams(
             # Ciclo experimental
             if cd._requires_experimental():
                 try:
-                    temperatures, entropies = _load_experimental_points(cd, label)
+                    temperatures, entropies = _load_experimental_points(
+                        cd, label, s.fluid, s.composition
+                    )
                 except Exception as exc:
                     print(
                         f"[AVISO] No se pudieron cargar datos experimentales "
@@ -802,13 +843,13 @@ if __name__ == "__main__":
             ),
 
             FluidSeries(
-                fluid       = ["DME", "PROPYLENE"],
-                composition = [0.80, 0.20],
+                fluid       = ["PROPANE", "DME"],
+                composition = [0.85, 0.15],
                 cycle       = CycleDef(
                     source           = CycleSource.EXPERIMENTAL,
                     xlsx_path        = "res-exp-ts.xlsx",
                     sheet_name       = "Hoja1",
-                    row              = 9,
+                    row              = 10,
                     temperature_cols = TEMPERATURE_COLS,
                     entropy_cols     = ENTROPY_COLS,
                     linestyle        = "--",
@@ -817,12 +858,12 @@ if __name__ == "__main__":
             ),
 
         ],
-        s_min  = 0.5,
+        s_min  = 1,
         s_max  = 3,
         T_min  = -20,
-        T_max  = 110,
+        T_max  = 100,
         title  = "Comparativa diagramas T-S de los ensayos experimentales",
     )
 
-    fig.savefig("diagramas_TS/mejor_TS.png", bbox_inches="tight")
+    fig.savefig("diagramas_TS/reiley_TS.png", bbox_inches="tight")
     print("Figura guardada")
